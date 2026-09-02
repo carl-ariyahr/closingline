@@ -375,14 +375,20 @@ function teamShort(name){
 
 /* ---------- game date parsing & sorting ---------- */
 var MONTHS={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function ptISO(ms){return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles'}).format(new Date(ms==null?Date.now():ms))}
 function gameDate(p){
-  var m=String(p.game||'').match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})/i);
-  if(!m)return null;
-  var now=new Date();
-  var d=new Date(now.getFullYear(),MONTHS[m[1].slice(0,3).toLowerCase()],+m[2],12,0,0);
-  if(d.getTime()<now.getTime()-180*86400000)d.setFullYear(d.getFullYear()+1);
+  var g=String(p.game||''), now=new Date(), d=null;
+  var iso=g.match(/(\d{4})-(\d{2})-(\d{2})/); /* code-pipeline format */
+  if(iso){d=new Date(+iso[1],+iso[2]-1,+iso[3],12,0,0)}
+  else{
+    var m=g.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})/i);
+    if(!m)return null;
+    d=new Date(now.getFullYear(),MONTHS[m[1].slice(0,3).toLowerCase()],+m[2],12,0,0);
+    if(d.getTime()<now.getTime()-180*86400000)d.setFullYear(d.getFullYear()+1);   /* January games seen in December */
+    else if(d.getTime()>now.getTime()+180*86400000)d.setFullYear(d.getFullYear()-1); /* December games seen in January */
+  }
   var t=String((p.signal||'')+' '+(p.game||'')).match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
-  if(t)d.setHours((+t[1]%12)+(/pm/i.test(t[3])?12:0),+t[2],0,0);
+  if(t){d.setHours((+t[1]%12)+(/pm/i.test(t[3])?12:0),+t[2],0,0);d._hasTime=true}
   return d;
 }
 function sortByGame(arr){
@@ -640,12 +646,12 @@ function updatedTxt(){
 /* ---------- daily record strip (slate cards = what Carl actually bets) ---------- */
 function dayRecHTML(){
   if(!picksData||!picksData.cards)return '';
-  var today=todayStr(), week=[];
-  for(var i=0;i<7;i++){var d=new Date(Date.now()-i*86400000);week.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'))}
+  var today=ptISO(), week=[]; /* the slate is dated in Pacific time, whatever the phone's zone */
+  for(var i=0;i<7;i++){week.push(ptISO(Date.now()-i*86400000))}
   var t={w:0,l:0,p:0}, wk={w:0,l:0,p:0};
   picksData.cards.forEach(function(cd){
     var m=String(cd.id||'').match(/^slate-(\d{4}-\d{2}-\d{2})$/);
-    if(!m)return;
+    if(!m||!Array.isArray(cd.picks))return; /* a card without a picks array must never blank the app */
     cd.picks.forEach(function(pk){
       if(!pk.result||pk.result==='pending')return;
       var k=pk.result==='win'?'w':pk.result==='loss'?'l':'p';
@@ -672,28 +678,52 @@ function teamKey(s){return lastWordKey(String(s||'').replace(/\b(ML|1H|F5)\b/gi,
 function isoDateOf(p){var d=gameDate(p);if(!d)return null;return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function publicSideOf(p){
   var s=String(p.signal||'');
-  var m=s.match(/PUBLIC\s+\d+%\s+of tickets on\s+(.+?)\s+but/i)||s.match(/public on\s+(.+?)\s+[—-]/i);
+  var m=s.match(/PUBLIC\s+\d+%\s+(?:of\s+)?tickets on\s+(.+?)\s+(?:but|—|-|·)/i)||s.match(/public on\s+(.+?)\s+[—-]/i)||s.match(/\d+%\s+(?:of\s+)?tickets on\s+(.+?)\s+(?:but|—|-|·)/i);
   return m?m[1].trim():null;
+}
+/* which of a game's two teams does a label name? 'away'|'home'|null. null when it can't be told apart —
+   including games where BOTH teams share a nickname (Red Sox @ White Sox, Tigers vs Tigers) — so a shared
+   nickname can never turn into a false ✓ */
+function whichTeam(label,away,home){
+  var la=lastWordKey(away),lh=lastWordKey(home); if(!la||!lh||la===lh)return null;
+  var t=String(label||'').replace(/\b(ML|1H|F5)\b/gi,'').replace(/[+-]?\d[\d.]*\s*$/,'').trim();
+  var ab=t.match(/^([A-Z]{2,4})$/); /* abbreviation only ("GB"): match the ABBR that leads the team in the game string */
+  if(ab){ if(String(away).indexOf(ab[1]+' ')===0)return 'away'; if(String(home).indexOf(ab[1]+' ')===0)return 'home'; return null }
+  var k=lastWordKey(t); if(k&&k===la)return 'away'; if(k&&k===lh)return 'home';
+  var n=t.toLowerCase().replace(/[^a-z]/g,'');
+  if(n.length>=5){ if(String(away).toLowerCase().replace(/[^a-z]/g,'').indexOf(n)>=0)return 'away'; if(String(home).toLowerCase().replace(/[^a-z]/g,'').indexOf(n)>=0)return 'home' }
+  return null;
 }
 function confirmChip(p){
   if(!extData||!extData.rows)return '';
   if(p.kind&&p.kind!=='fade')return '';
   if(p.result&&p.result!=='pending')return '';
-  var pub=publicSideOf(p); if(!pub)return '';
-  var mk=/total/i.test(p.type||'')?'Total':/money/i.test(p.type||'')?'ML':'Spread';
-  var gm=String(p.game||'').match(/^(.*?)\s+@\s+(.*?)\s+[—-]/); if(!gm)return '';
+  var unk='<span class="cchip unconfirmed" title="No second-source data loaded for this game yet">◌ unconfirmed</span>';
+  var pub=publicSideOf(p); if(!pub)return unk;
+  var mk=/total/i.test(p.type||'')?'Total':/money/i.test(p.type||'')?'ML':/spread/i.test(p.type||'')?'Spread':null; if(!mk)return unk;
+  var gm=String(p.game||'').match(/^(.*?)\s+@\s+(.*?)\s+[—-]/); if(!gm)return unk;
   var away=gm[1],home=gm[2],date=isoDateOf(p),sport=p._sport;
-  var row=null,rows=extData.rows,k;
+  var rows=extData.rows,k,matches=[];
   /* match the PAIR of nicknames regardless of order — a source (or an old AI routine) may list home/away swapped */
   var want=[lastWordKey(away),lastWordKey(home)].sort().join('~');
   for(k in rows){var r=rows[k];
-    if(r.league===sport&&r.market===mk&&r.date===date&&[lastWordKey(r.away),lastWordKey(r.home)].sort().join('~')===want){row=r;break}}
-  if(!row||!row.a||!row.b||row.a.bets==null||row.b.bets==null){
-    return '<span class="cchip unconfirmed" title="No second-source data loaded for this game yet">◌ unconfirmed</span>';
-  }
-  var side=row.a.bets>=row.b.bets?row.a:row.b, name=String(side.name||'');
-  var agrees = mk==='Total' ? (/over/i.test(name)===/over/i.test(pub)) : (teamKey(name)===teamKey(pub));
+    if(r.league===sport&&r.market===mk&&r.date===date&&[lastWordKey(r.away),lastWordKey(r.home)].sort().join('~')===want)matches.push(r)}
+  if(matches.length!==1)return unk; /* nothing loaded, or a doubleheader we can't tell apart */
+  var row=matches[0]; if(!row.a||!row.b||row.a.bets==null||row.b.bets==null)return unk;
   var src=row.source==='actionnetwork'?'Action':row.source;
+  if(Math.abs(row.a.bets-row.b.bets)<6)return '<span class="cchip unconfirmed" title="'+esc(src)+' is split '+row.a.bets+'/'+row.b.bets+' on this market — no read either way">◌ '+esc(src)+' split</span>';
+  var side=row.a.bets>row.b.bets?row.a:row.b, name=String(side.name||'');
+  var agrees;
+  if(mk==='Total'){
+    var ours=/^over/i.test(pub)?'over':/^under/i.test(pub)?'under':null, theirs=/^over/i.test(name)?'over':/^under/i.test(name)?'under':null;
+    if(!ours||!theirs)return unk;
+    agrees=(ours===theirs);
+  }else{
+    var theirSlot=whichTeam(name,row.away,row.home), ourSlot=whichTeam(pub,away,home);
+    if(!theirSlot||!ourSlot)return unk;
+    /* the row may list home/away swapped relative to our game string — compare the TEAM, not the slot */
+    agrees=(lastWordKey(theirSlot==='away'?row.away:row.home)===lastWordKey(ourSlot==='away'?away:home));
+  }
   var money=side.money!=null?(' · '+side.money+'% $'):'';
   return agrees
     ? '<span class="cchip confirmed" title="'+esc(src)+' agrees: public on '+esc(name)+' ('+side.bets+'% of bets'+esc(money)+')">✓ '+esc(src)+' confirms</span>'
@@ -794,12 +824,14 @@ function render(){
     return out;
   }
   function isTop(p){
-    if(p._cardId==='patrick-variables'||p._cardId==='rnd-fade'||p._cardId==='ufc-card')return false; /* experimental / R&D / UFC tracking never surfaces on the front page */
+    if(p._cardId==='patrick-variables'||p._cardId==='rnd-fade'||p._cardId==='ufc-card'||p._cardId==='auto-alerts'||p._cardId==='wcoast-angle')return false; /* experimental / R&D / UFC / alerts / deleted angle never surface on the front page */
+    if(p.status==='dead'||p.status==='logged'||p.status==='alert')return false; /* retired, already bet, or a DO-NOT-BET alert — even if stacked */
     if(!((p.status==='play'||p.stack)&&(!p.result||p.result==='pending')))return false;
     var d=gameDate(p);
     if(d){
-      var startOfToday=new Date(); startOfToday.setHours(0,0,0,0);
-      if(d.getTime()<startOfToday.getTime())return false; /* game already played — not a live play */
+      var gISO=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      if(gISO<ptISO())return false; /* game day already passed (Pacific time, not the phone's zone) */
+      if(d._hasTime&&d.getTime()<Date.now())return false; /* kickoff already passed */
     }
     if(/^under\b/i.test(String(p.pick)))return true; /* Under plays surface the moment they're flagged */
     return !d || (d.getTime()-Date.now()) <= 7*86400000; /* Carl widened: fully-qualified plays show up to 7 days out */
@@ -1247,56 +1279,35 @@ function pullRemote(){
     .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
     .catch(function(){return null});
 }
-function pullPicks(){
+/* Cheap freshness probe first (?meta=1 returns just {rev}); the body is downloaded only when the
+   revision actually changed. Cuts the dashboard's traffic from ~390 MB/day to a few MB. */
+function pullDoc(url,getCur,setCur,onBody){
   var k=appKey(); if(!k)return Promise.resolve();
-  return fetch(API+"?doc=picks",{headers:{"x-app-key":k},cache:"no-store"})
+  var sep=url.indexOf('?')>=0?'&':'?';
+  var cur=getCur();
+  return fetch(url+sep+"meta=1",{headers:{"x-app-key":k},cache:"no-store"})
     .then(function(r){return r.ok?r.json():null})
-    .then(function(p){
-      if(p)lastDataAt=Date.now();
-      if(p&&(!picksData||(p.rev||0)!==(picksData.rev||0))){picksData=p;render();}
+    .then(function(m){
+      if(m&&cur&&(m.rev||0)===(cur.rev||0)){ if(onBody)onBody(null,true); return null; }
+      return fetch(url,{headers:{"x-app-key":k},cache:"no-store"}).then(function(r){return r.ok?r.json():null});
     })
-    .catch(function(){});
-}
-function pullLines(){
-  var k=appKey(); if(!k)return Promise.resolve();
-  return fetch(API+"?doc=lines",{headers:{"x-app-key":k},cache:"no-store"})
-    .then(function(r){return r.ok?r.json():null})
     .then(function(d){
-      if(d&&(!linesData||(d.rev||0)!==(linesData.rev||0))){linesData=d;render();}
+      if(!d)return;
+      if(onBody)onBody(d,false);
+      if(!cur||(d.rev||0)!==(cur.rev||0)){setCur(d);render();}
     })
     .catch(function(){});
 }
-function pullJournal(){
-  var k=appKey(); if(!k)return Promise.resolve();
-  return fetch(API+"?doc=journal",{headers:{"x-app-key":k},cache:"no-store"})
-    .then(function(r){return r.ok?r.json():null})
-    .then(function(d){
-      if(d&&(!journalData||(d.rev||0)!==(journalData.rev||0))){journalData=d;render();}
-    })
-    .catch(function(){});
-}
-function pullSentiment(){
-  var k=appKey(); if(!k)return Promise.resolve();
-  return fetch(API+"?doc=sentiment",{headers:{"x-app-key":k},cache:"no-store"})
-    .then(function(r){return r.ok?r.json():null})
-    .then(function(d){
-      if(d&&(!sentimentData||(d.rev||0)!==(sentimentData.rev||0))){sentimentData=d;render();}
-    })
-    .catch(function(){});
-}
-function pullExternal(){
-  var k=appKey(); if(!k)return Promise.resolve();
-  return fetch("/api/ingest",{headers:{"x-app-key":k},cache:"no-store"})
-    .then(function(r){return r.ok?r.json():null})
-    .then(function(d){
-      if(d&&(!extData||(d.rev||0)!==(extData.rev||0))){extData=d;render();}
-    })
-    .catch(function(){});
-}
+function pullPicks(){return pullDoc(API+"?doc=picks",function(){return picksData},function(d){picksData=d},function(d,same){if(d||same)lastDataAt=Date.now()})}
+function pullLines(){return pullDoc(API+"?doc=lines",function(){return linesData},function(d){linesData=d})}
+function pullJournal(){return pullDoc(API+"?doc=journal",function(){return journalData},function(d){journalData=d})}
+function pullSentiment(){return pullDoc(API+"?doc=sentiment",function(){return sentimentData},function(d){sentimentData=d})}
+function pullExternal(){return pullDoc("/api/ingest",function(){return extData},function(d){extData=d})}
 var lineTick=0;
 function refreshFromRemote(){
   pullPicks();
-  if(++lineTick%5===1){pullLines();pullJournal();pullSentiment();pullExternal();} /* bigger docs — poll every 5 min */
+  if(++lineTick%5===1){pullJournal();pullSentiment();pullExternal(); if(cardSub==='lines')pullLines();} /* bigger docs — every 5 min; the line tracker only when its (hidden) tab is open */
+  if(!BET_TRACKING)return; /* bankroll doc is shelved — don't poll it */
   pullRemote().then(function(remote){
     if(remote&&(remote.rev||0)>(state.rev||0)){
       state=remote;

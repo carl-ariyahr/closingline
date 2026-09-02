@@ -27,7 +27,11 @@ export default async function handler(req, res) {
   if (!process.env.APP_KEY || key !== process.env.APP_KEY) return res.status(401).json({ error: 'bad key' });
 
   const doc = await readBlob();
-  if (req.method === 'GET') return res.status(200).json(doc);
+  if (req.method === 'GET') {
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (req.query.meta === '1') return res.status(200).json({ rev: doc.rev || 0, rows: Object.keys(doc.rows || {}).length });
+    return res.status(200).json(doc);
+  }
   if (req.method !== 'POST') { res.setHeader('Allow', 'GET, POST'); return res.status(405).end(); }
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
