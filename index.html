@@ -684,8 +684,10 @@ function confirmChip(p){
   var gm=String(p.game||'').match(/^(.*?)\s+@\s+(.*?)\s+[—-]/); if(!gm)return '';
   var away=gm[1],home=gm[2],date=isoDateOf(p),sport=p._sport;
   var row=null,rows=extData.rows,k;
+  /* match the PAIR of nicknames regardless of order — a source (or an old AI routine) may list home/away swapped */
+  var want=[lastWordKey(away),lastWordKey(home)].sort().join('~');
   for(k in rows){var r=rows[k];
-    if(r.league===sport&&r.market===mk&&r.date===date&&lastWordKey(r.away)===lastWordKey(away)&&lastWordKey(r.home)===lastWordKey(home)){row=r;break}}
+    if(r.league===sport&&r.market===mk&&r.date===date&&[lastWordKey(r.away),lastWordKey(r.home)].sort().join('~')===want){row=r;break}}
   if(!row||!row.a||!row.b||row.a.bets==null||row.b.bets==null){
     return '<span class="cchip unconfirmed" title="No second-source data loaded for this game yet">◌ unconfirmed</span>';
   }

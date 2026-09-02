@@ -21,8 +21,11 @@ export function externalNote(extDoc, p) {
   const lw = s => String(s || '').toLowerCase().replace(/[^a-z]/g, '').split(/\s+/).pop();
   const lastWord = s => String(s || '').trim().split(/\s+/).pop().toLowerCase().replace(/[^a-z]/g, '');
   const mk = p.type === 'Moneyline' ? 'ML' : p.type === 'Spread' ? 'Spread' : 'Total';
+  // match the PAIR of nicknames regardless of order (a source may list home/away swapped)
+  const pairKey = (a, h) => [lastWord(a), lastWord(h)].sort().join('~');
+  const want = pairKey(p.away, p.home);
   const row = Object.values(extDoc.rows).find(r => r.league === p.sport && r.date === p.date && r.market === mk
-    && lastWord(r.away) === lastWord(p.away) && lastWord(r.home) === lastWord(p.home));
+    && pairKey(r.away, r.home) === want);
   if (!row || row.a?.bets == null || row.b?.bets == null) return null;
   const pubSide = row.a.bets >= row.b.bets ? row.a : row.b;
   const pubName = String(pubSide.name || '');
