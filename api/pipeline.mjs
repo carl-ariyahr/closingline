@@ -172,7 +172,7 @@ export default async function handler(req, res) {
         for (const r of parsed.rows) {
           const k = ['actionnetwork', sport, r.date, nick(r.away), nick(r.home), r.market, r.dhIndex || 0].join('|');
           const prevRow = extDoc.rows[k];
-          const same = prevRow && prevRow.a?.bets === r.a.bets && prevRow.b?.bets === r.b.bets && prevRow.a?.money === r.a.money && prevRow.b?.money === r.b.money;
+          const same = prevRow && prevRow.start === r.start && prevRow.a?.bets === r.a.bets && prevRow.b?.bets === r.b.bets && prevRow.a?.money === r.a.money && prevRow.b?.money === r.b.money;
           if (same) continue;
           extDoc.rows[k] = { source: 'actionnetwork', league: sport, away: r.away, home: r.home, date: r.date, start: r.start, market: r.market, line: r.line, a: r.a, b: r.b, numBets: r.numBets, dhIndex: r.dhIndex || 0, pulledAt: ts };
           changed++;
