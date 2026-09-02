@@ -6,6 +6,7 @@
 import { put, get } from '@vercel/blob';
 import { SPORTS, fetchSplitsHTML, parseSplits, validateGame } from '../lib/vsin.mjs';
 import { evalGame, keyNumberNote } from '../lib/formula.mjs';
+import { loadSharpBoard } from '../lib/oddsapi.mjs';
 
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
 const PICKS_BLOB = 'closing-line-shadow-picks.json';
@@ -28,6 +29,12 @@ async function writeBlob(name, data) {
 function ptDateStr(d = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(d); // YYYY-MM-DD
 }
+function normIncludes(pick, team) {
+  const p = String(pick).toLowerCase().replace(/[^a-z]/g, '');
+  const t = String(team).toLowerCase().replace(/[^a-z]/g, '');
+  const last = String(team).trim().split(/\s+/).pop().toLowerCase().replace(/[^a-z]/g, '');
+  return p.includes(t.slice(0, 6)) || p.includes(last);
+}
 
 export default async function handler(req, res) {
   const key = req.headers['x-app-key'] || req.query.k;
@@ -43,6 +50,8 @@ export default async function handler(req, res) {
   const prevBySport = {};
   for (const s of snapDoc.snapshots) prevBySport[s.sport] = s; // last one per sport wins
 
+  const useOdds = req.query.odds !== '0'; // ?odds=0 to skip the metered feed on a run
+  report.oddsApi = { used: useOdds, remaining: null, sports: {} };
   const freshGames = [];
   for (const sport of SPORTS) {
     try {
@@ -88,22 +97,68 @@ export default async function handler(req, res) {
   const seen = new Set();
   for (const d of Object.values(picksDoc.days)) for (const p of d.picks) if (!p.result) seen.add(`${p.gamecode}|${p.type}`);
 
+  // sharp-vs-soft boards keyed per sport (only for sports that produced fresh games); metered, so load lazily once
+  const sharpBoards = {};
+  async function board(sport) {
+    if (!useOdds) return null;
+    if (!(sport in sharpBoards)) {
+      try {
+        const b = await loadSharpBoard(sport);
+        sharpBoards[sport] = b;
+        report.oddsApi.remaining = b.remaining ?? report.oddsApi.remaining;
+        report.oddsApi.sports[sport] = b.note;
+      } catch (e) { sharpBoards[sport] = null; report.oddsApi.sports[sport] = `error: ${e.message || e}`; }
+    }
+    return sharpBoards[sport];
+  }
+
+  const sportsWithGames = [...new Set(freshGames.map(g => g.sport))];
+  for (const sport of sportsWithGames) await board(sport); // warm boards
+
   for (const g of freshGames) {
     for (const p of evalGame(g, startedAt)) {
       const k = `${p.gamecode}|${p.type}`;
       if (seen.has(k)) continue;
       seen.add(k);
       const key = keyNumberNote(p.sport, p.type, p.line);
+
+      // sharp-vs-soft confirmation (independent second signal; NEVER changes tier/formula, annotation only)
+      let sharpNote = '', sharp = null;
+      const b = sharpBoards[p.sport];
+      const info = b?.forGame ? b.forGame(p.away, p.home) : null;
+      if (info) {
+        sharp = { homeSharpEdge: info.homeSharpEdge, awaySharpEdge: info.awaySharpEdge, totalSharpDelta: info.totalSharpDelta, h1: info.h1 };
+        if (p.type === 'Total' && info.totalSharpDelta != null) {
+          // our pick is Under if it starts with "Under"
+          const weUnder = /^under/i.test(p.pick);
+          const sharpLeansUnder = info.totalSharpDelta < -0.25; // sharp total below retail => sharp leans under
+          const sharpLeansOver = info.totalSharpDelta > 0.25;
+          if ((weUnder && sharpLeansUnder) || (!weUnder && sharpLeansOver)) sharpNote = `✓ sharp agrees (Pinnacle total ${info.sharp.total} vs retail ${info.retail.total})`;
+          else if ((weUnder && sharpLeansOver) || (!weUnder && sharpLeansUnder)) sharpNote = `⚠ sharp disagrees (Pinnacle total ${info.sharp.total} vs retail ${info.retail.total})`;
+        } else if (p.type === 'Moneyline' || p.type === 'Spread') {
+          // our pick side: does Pinnacle give it more win prob than retail?
+          const ourHome = normIncludes(p.pick, p.home);
+          const edge = ourHome ? info.homeSharpEdge : info.awaySharpEdge;
+          if (edge != null && edge >= 1.0) sharpNote = `✓ sharp agrees (Pinnacle +${edge}% on our side vs retail)`;
+          else if (edge != null && edge <= -1.0) sharpNote = `⚠ sharp on the other side (${edge}% vs retail)`;
+        }
+        if (info.h1?.total != null || info.h1?.spread_home != null) {
+          sharp.realH1 = info.h1;
+        }
+      }
+
       const pick = {
         ...p,
         game: `${p.away} @ ${p.home} — ${p.date} (${p.sport})`,
         signal: `PUBLIC ${p.T}% of tickets on ${p.publicSide}${p.publicLine ? ' ' + p.publicLine : ''} but only ${p.H}% of the money — we take ${p.pick}${p.line ? ' ' + p.line : ''} · ${p.D} pt gap`
           + (p.downgraded.length ? ` · downgraded to watch (${p.downgraded.join(', ')})` : '')
-          + (key ? ` · ${key}` : ''),
+          + (key ? ` · ${key}` : '')
+          + (sharpNote ? ` · ${sharpNote}` : ''),
+        sharp,
         postedAt: startedAt.toISOString(),
       };
       day.picks.push(pick);
-      report.newPicks.push({ tier: pick.tier, type: pick.type, pick: pick.pick, line: pick.line, game: pick.game, D: pick.D });
+      report.newPicks.push({ tier: pick.tier, type: pick.type, pick: pick.pick, line: pick.line, game: pick.game, D: pick.D, sharp: sharpNote || null });
     }
   }
 
