@@ -178,9 +178,12 @@ export default async function handler(req, res) {
         postedAt: startedAt.toISOString(),
       };
       day.picks.push(pick);
-      report.newPicks.push({ tier: pick.tier, type: pick.type, pick: pick.pick, line: pick.line, game: pick.game, D: pick.D, sharp: sharpNote || null });
+      report.newPicks.push({ tier: pick.tier, type: pick.type, pick: pick.pick, line: pick.line, game: pick.game, D: pick.D, sharp: sharpNote || null, contention: contNote || null });
     }
   }
+
+  // contention alert list — EVERY new pick (any sport, any tier) whose game has an out-of-race team
+  report.contentionAlerts = report.newPicks.filter(p => p.contention).map(p => `${p.pick} — ${p.game}`);
 
   // ---- GRADE finished shadow picks (ESPN, free) ----
   const ungraded = [];
