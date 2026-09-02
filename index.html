@@ -130,6 +130,11 @@
   .resbtn:hover{color:var(--muted)}
   .kbadge.nhl{background:rgba(127,168,217,.15);color:#7FA8D9}
   .kbadge.ufc{background:rgba(224,96,92,.15);color:#E0605C}
+  /* second-source confirmation chip (Action Network vs VSiN) — VSiN decides the play, this grades confidence */
+  .cchip{font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;border-radius:4px;padding:2px 7px;flex:none;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+  .cchip.confirmed{background:var(--win-dim);color:var(--win);border-color:rgba(85,181,134,.4)}
+  .cchip.caution{background:var(--amber-dim);color:var(--amber);border-color:rgba(233,169,74,.5)}
+  .cchip.unconfirmed{color:var(--faint)}
   .stab{flex:none;background:var(--raised);border:1px solid var(--line);border-radius:16px;color:var(--muted);font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:6px 14px;cursor:pointer;white-space:nowrap}
   .stab.on{background:var(--amber);border-color:var(--amber);color:#1A1408}
   .dots{display:flex;gap:4px;flex-wrap:wrap}
@@ -208,7 +213,7 @@ var API="/api/state", LSKEY="closing-line-v1", KEYKEY="closing-line-key";
 var DEFAULT_STATE={rev:0,config:{season:"2026",start:3000,unit:45,coreBudget:2400,funBudget:600},bets:[]};
 var state=DEFAULT_STATE;
 var picksData=null, linesData=null, journalData=null, sentimentData=null, expandedGame=null, activeTab='card', cardSub='plays';
-var resultsOpen={}, lastDataAt=0;
+var resultsOpen={}, lastDataAt=0, extData=null; /* extData = session-ingested Action Network / DonBest splits (/api/ingest) */
 var BET_TRACKING=false; /* shelved per Carl 2026-09-01 — Bankroll tab & Log-it hidden, all code and data kept */
 var saveMode="…", syncOK=false;
 var FUN_TYPES=["Parlay","Same-Game Parlay"];
@@ -657,6 +662,42 @@ function dayRecHTML(){
   return '<div class="dayrec">'+seg('Slate today',t)+seg('Last 7 days',wk)+'</div>';
 }
 
+/* ---------- second-source confirmation (code, not AI) ----------
+   Rule (Carl, 2026-09-02): VSiN/DK decides the play. Action Network only grades confidence:
+   ✓ confirmed = Action's majority-ticket side agrees with VSiN's public side
+   ⚠ caution   = Action's public is on the OTHER side (play stands, less confirmation)
+   ◌ unconfirmed = no Action row loaded for this game/market yet */
+function lastWordKey(s){var w=String(s||'').trim().split(/\s+/);return w[w.length-1].toLowerCase().replace(/[^a-z]/g,'')}
+function teamKey(s){return lastWordKey(String(s||'').replace(/\b(ML|1H|F5)\b/gi,'').replace(/[+-]?\d[\d.]*\s*$/,'').trim())}
+function isoDateOf(p){var d=gameDate(p);if(!d)return null;return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function publicSideOf(p){
+  var s=String(p.signal||'');
+  var m=s.match(/PUBLIC\s+\d+%\s+of tickets on\s+(.+?)\s+but/i)||s.match(/public on\s+(.+?)\s+[—-]/i);
+  return m?m[1].trim():null;
+}
+function confirmChip(p){
+  if(!extData||!extData.rows)return '';
+  if(p.kind&&p.kind!=='fade')return '';
+  if(p.result&&p.result!=='pending')return '';
+  var pub=publicSideOf(p); if(!pub)return '';
+  var mk=/total/i.test(p.type||'')?'Total':/money/i.test(p.type||'')?'ML':'Spread';
+  var gm=String(p.game||'').match(/^(.*?)\s+@\s+(.*?)\s+[—-]/); if(!gm)return '';
+  var away=gm[1],home=gm[2],date=isoDateOf(p),sport=p._sport;
+  var row=null,rows=extData.rows,k;
+  for(k in rows){var r=rows[k];
+    if(r.league===sport&&r.market===mk&&r.date===date&&lastWordKey(r.away)===lastWordKey(away)&&lastWordKey(r.home)===lastWordKey(home)){row=r;break}}
+  if(!row||!row.a||!row.b||row.a.bets==null||row.b.bets==null){
+    return '<span class="cchip unconfirmed" title="No second-source data loaded for this game yet">◌ unconfirmed</span>';
+  }
+  var side=row.a.bets>=row.b.bets?row.a:row.b, name=String(side.name||'');
+  var agrees = mk==='Total' ? (/over/i.test(name)===/over/i.test(pub)) : (teamKey(name)===teamKey(pub));
+  var src=row.source==='actionnetwork'?'Action':row.source;
+  var money=side.money!=null?(' · '+side.money+'% $'):'';
+  return agrees
+    ? '<span class="cchip confirmed" title="'+esc(src)+' agrees: public on '+esc(name)+' ('+side.bets+'% of bets'+esc(money)+')">✓ '+esc(src)+' confirms</span>'
+    : '<span class="cchip caution" title="'+esc(src)+' shows the public on '+esc(name)+' ('+side.bets+'% of bets'+esc(money)+') — disagrees with VSiN. Play stands, less confirmation.">⚠ caution · '+esc(src)+' disagrees</span>';
+}
+
 /* ---------- render ---------- */
 function render(){
   if(!BET_TRACKING&&activeTab==='bank')activeTab='card';
@@ -731,6 +772,7 @@ function render(){
     return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+'"><span class="kbadge '+kb+'">'+kl+'</span>'+stack
       +'<div class="pmain">'+sp+'<b>'+esc(p.pick)+'</b> · '+esc(gameTxt)+pushNote+'<div class="psig">'+esc(p.signal||'')+'</div></div>'
       +res
+      +confirmChip(p)
       +'<span class="pstat '+esc(p.status||'lean')+'">'+esc(p.status||'lean')+'</span>'
       +logBtn+'</div>';
   }
@@ -1240,10 +1282,19 @@ function pullSentiment(){
     })
     .catch(function(){});
 }
+function pullExternal(){
+  var k=appKey(); if(!k)return Promise.resolve();
+  return fetch("/api/ingest",{headers:{"x-app-key":k},cache:"no-store"})
+    .then(function(r){return r.ok?r.json():null})
+    .then(function(d){
+      if(d&&(!extData||(d.rev||0)!==(extData.rev||0))){extData=d;render();}
+    })
+    .catch(function(){});
+}
 var lineTick=0;
 function refreshFromRemote(){
   pullPicks();
-  if(++lineTick%5===1){pullLines();pullJournal();pullSentiment();} /* bigger docs — poll every 5 min */
+  if(++lineTick%5===1){pullLines();pullJournal();pullSentiment();pullExternal();} /* bigger docs — poll every 5 min */
   pullRemote().then(function(remote){
     if(remote&&(remote.rev||0)>(state.rev||0)){
       state=remote;
@@ -1278,7 +1329,7 @@ function refreshFromRemote(){
     saveMode="synced — every device sees this";
     render();
   });
-  pullPicks(); pullLines(); pullJournal(); pullSentiment();
+  pullPicks(); pullLines(); pullJournal(); pullSentiment(); pullExternal();
   setInterval(refreshFromRemote,60000);
   setInterval(function(){var u=document.getElementById("updated");if(u)u.textContent=updatedTxt()},30000);
   document.addEventListener("visibilitychange",function(){if(!document.hidden)refreshFromRemote()});

@@ -36,7 +36,17 @@ export function externalNote(extDoc, p) {
   const money = pubSide.money != null ? `, ${pubSide.money}% of money` : '';
   return agrees
     ? `✓ ${src} confirms public on ${pubName} (${pubSide.bets}% of bets${money})`
-    : `⚠ ${src} shows public on ${pubName} (${pubSide.bets}% of bets${money}) — disagrees with DK`;
+    : `⚠ CAUTION — ${src} shows public on ${pubName} (${pubSide.bets}% of bets${money}), disagrees with DK · less confirmation, VSiN still qualifies the play`;
+}
+
+// Structured confirmation level (Carl's rule 2026-09-02): VSiN decides the play; Action Network grades confidence.
+//   confirmed   = Action's public side agrees with VSiN's  (✓)
+//   caution     = Action's public side is the OTHER side   (⚠) — play stands, less confirmation
+//   unconfirmed = no Action row for this game/market yet   (◌)
+export function confirmationLevel(extNote) {
+  if (!extNote) return { level: 'unconfirmed', emoji: '◌', label: 'unconfirmed — no second source loaded' };
+  if (extNote.startsWith('✓')) return { level: 'confirmed', emoji: '✓', label: 'confirmed by Action Network' };
+  return { level: 'caution', emoji: '⚠', label: 'caution — Action Network disagrees' };
 }
 const CONTINUITY_MAX_SWING = 20; // tickets are cumulative; a bigger hourly swing = misread
 
@@ -205,10 +215,11 @@ export default async function handler(req, res) {
           + (extNote ? ` · ${extNote}` : '')
           + (contNote ? ` · ${contNote}` : ''),
         sharp, contention: contNote || null, external: extNote || null,
+        confirmation: confirmationLevel(extNote),
         postedAt: startedAt.toISOString(),
       };
       day.picks.push(pick);
-      report.newPicks.push({ tier: pick.tier, type: pick.type, pick: pick.pick, line: pick.line, game: pick.game, D: pick.D, sharp: sharpNote || null, contention: contNote || null });
+      report.newPicks.push({ tier: pick.tier, type: pick.type, pick: pick.pick, line: pick.line, game: pick.game, D: pick.D, sharp: sharpNote || null, contention: contNote || null, confirmation: pick.confirmation.level });
     }
   }
 
