@@ -142,6 +142,17 @@
   /* 98/2 read — posted at its tier, with an asterisk */
   .kbadge.flag98{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(233,169,74,.5)}
   sup.ast{color:var(--amber);font-weight:700;font-size:.8em;margin-left:1px}
+  /* record by tab (Record tab) */
+  .tabrecs{display:flex;flex-direction:column;gap:6px}
+  .tabrec{display:grid;grid-template-columns:1.25fr 1.4fr 1.3fr auto;gap:8px 10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px}
+  .tabrec .tname{font-weight:600}
+  .tabrec .trec b{font-variant-numeric:tabular-nums}
+  .tabrec .tstreak{font-family:var(--mono);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tabrec .tstreak small{font-weight:400;color:var(--muted);font-family:inherit}
+  .tabrec .tdots{display:flex;gap:3px;justify-self:end}
+  .tabrec .tdots .dot{width:16px;height:16px;font-size:9.5px;line-height:16px}
+  .tabrec .faint{color:var(--faint)}
+  @media(max-width:520px){.tabrec{grid-template-columns:1fr 1fr;} .tabrec .tdots{grid-column:1/-1;justify-self:start}}
   .stab{flex:none;background:var(--raised);border:1px solid var(--line);border-radius:16px;color:var(--muted);font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:6px 14px;cursor:pointer;white-space:nowrap}
   .stab.on{background:var(--amber);border-color:var(--amber);color:#1A1408}
   .dots{display:flex;gap:4px;flex-wrap:wrap}
@@ -592,6 +603,49 @@ function safePanel(fn,label){
   catch(err){
     return '<p class="none-msg">'+esc(label)+' couldn\u2019t render \u2014 unexpected data shape ('+esc(String(err&&err.message||err))+'). The rest of the app is unaffected; Claude will fix the source.</p>';
   }
+}
+
+/* ---------- per-tab records (Carl 2026-09-02: "the record tab should include the different tabs' win and loss streaks") ----------
+   One row per pill on the card. Same bucketing the pills use; graded picks only, pushes shown but kept out of the streak. */
+function tabRecordsHTML(){
+  if(!picksData||!picksData.cards)return '';
+  var PAPER={'patrick-variables':1,'rnd-fade':1,'ufc-card':1};
+  var ANGLE={'wcoast-angle':1,'roaddog-angle':1,'homedog-angle':1,'auto-alerts':1};
+  function sportTag(p){var m=String(p.game||'').match(/\((NFL|WNBA|NBA|CFB|CBB|MLB|NHL)\)/i);return m?m[1].toUpperCase():''}
+  var TABS=[
+    ['Plays',function(p,id){return !PAPER[id]&&!ANGLE[id]&&(p.featured||p.status==='play'||p.stack)}],
+    ['Patrick’s Variables',function(p,id){return id==='patrick-variables'&&p.kind!=='injury'}],
+    ['R&amp;D',function(p,id){return id==='rnd-fade'}],
+    ['NHL',function(p,id){return !PAPER[id]&&sportTag(p)==='NHL'}],
+    ['Fade system',function(p,id){return !PAPER[id]&&!ANGLE[id]&&(!p.kind||p.kind==='fade')}],
+    ['Road dogs 1H',function(p,id){return id==='roaddog-angle'}],
+    ['Home dogs 1H',function(p,id){return id==='homedog-angle'}]
+  ];
+  /* chronological: by game date, then the order they sit in the doc */
+  var all=[];var order=0;
+  picksData.cards.forEach(function(cd){if(!Array.isArray(cd.picks))return;cd.picks.forEach(function(p){
+    if(p.status==='dead'||p.kind==='injury')return;
+    var r=p.result; if(r!=='win'&&r!=='loss'&&r!=='push')return;
+    var d=gameDate(p); all.push({p:p,id:cd.id,t:d?d.getTime():0,o:order++});
+  })});
+  all.sort(function(a,b){return (a.t-b.t)||(a.o-b.o)});
+  var rows=TABS.map(function(tab){
+    var seq=[],w=0,l=0,pu=0;
+    all.forEach(function(x){ if(!tab[1](x.p,x.id))return; var r=x.p.result; if(r==='push'){pu++;return} seq.push(r); if(r==='win')w++; else l++; });
+    if(!seq.length&&!pu)return '<div class="tabrec"><span class="tname">'+tab[0]+'</span><span class="trec faint">no graded picks yet</span></div>';
+    var cur=0,last=seq[seq.length-1]; for(var i=seq.length-1;i>=0&&seq[i]===last;i--)cur++;
+    var bestW=0,run=0; seq.forEach(function(r){run=r==='win'?run+1:0; if(run>bestW)bestW=run});
+    var worstL=0; run=0; seq.forEach(function(r){run=r==='loss'?run+1:0; if(run>worstL)worstL=run});
+    var pct=seq.length?((w/seq.length)*100).toFixed(0)+'%':'—';
+    var dots=seq.slice(-10).map(function(r){return '<span class="dot '+(r==='win'?'dw':'dl')+'">'+(r==='win'?'W':'L')+'</span>'}).join('');
+    return '<div class="tabrec">'
+      +'<span class="tname">'+tab[0]+'</span>'
+      +'<span class="trec"><b>'+w+'–'+l+(pu?'–'+pu:'')+'</b> <span class="faint">'+pct+' · </span><span class="'+netUnitsCls(w,l)+'">'+netUnits(w,l)+'</span></span>'
+      +'<span class="tstreak '+(seq.length?(last==='win'?'pos':'neg'):'')+'" title="current streak · best run of wins / worst run of losses">'+(seq.length?(cur+(last==='win'?'W':'L')):'—')+'<small> · best W'+bestW+' · worst L'+worstL+'</small></span>'
+      +'<span class="tdots">'+dots+'</span>'
+      +'</div>';
+  }).join('');
+  return '<section class="panel"><h2>Record by tab <small>same buckets as the pills on the card · graded picks only · streak excludes pushes · dots = last 10</small></h2><div class="tabrecs">'+rows+'</div></section>';
 }
 
 /* ---------- streak & trend ---------- */
@@ -1069,6 +1123,7 @@ function render(){
 
   if(activeTab==='rec'){
   h+=safePanel(streakHTML,'Streak & trend');
+  h+=safePanel(tabRecordsHTML,'Record by tab');
   /* shadow ledger */
   h+='<section class="panel"><h2>Shadow ledger <small>every tracked game graded against angles we aren’t betting · flags at n≥20 and ≥55% (or ≤45%)</small></h2>'+safePanel(ledgerHTML,'Shadow ledger')+'</section>';
   }
