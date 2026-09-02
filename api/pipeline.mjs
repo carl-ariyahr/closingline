@@ -9,6 +9,7 @@ import { evalGame, keyNumberNote } from '../lib/formula.mjs';
 import { loadSharpBoard } from '../lib/oddsapi.mjs';
 import { gradePicks } from '../lib/grade.mjs';
 import { loadContention } from '../lib/contention.mjs';
+import { AN_LEAGUE, fetchActionHTML, parseActionSplits } from '../lib/actionnetwork.mjs';
 
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
 const PICKS_BLOB = 'closing-line-shadow-picks.json';
@@ -132,6 +133,36 @@ export default async function handler(req, res) {
   snapDoc.snapshots = snapDoc.snapshots.filter(s => new Date(s.ts).getTime() >= cutoff);
   snapDoc.rev = (snapDoc.rev || 0) + 1;
   await writeBlob(SNAP_BLOB, snapDoc);
+
+  // ---- second source, pulled by code every run: Action Network consensus tickets%/money% ----
+  // Same key scheme as /api/ingest so session-fed rows and code-fed rows share one table.
+  // Annotation only (✓ confirmed / ⚠ caution / ◌ unconfirmed) — never makes or changes a pick.
+  report.action = {};
+  {
+    const lastWord = s => String(s || '').trim().split(/\s+/).pop().toLowerCase().replace(/[^a-z]/g, '');
+    let changed = 0;
+    for (const sport of Object.keys(AN_LEAGUE)) {
+      try {
+        const parsed = parseActionSplits(await fetchActionHTML(sport), sport);
+        for (const r of parsed.rows) {
+          const k = ['actionnetwork', sport, r.date, lastWord(r.away), lastWord(r.home), r.market].join('|');
+          extDoc.rows[k] = { source: 'actionnetwork', league: sport, ...r, pulledAt: startedAt.toISOString() };
+          changed++;
+        }
+        report.action[sport] = { games: parsed.games, rows: parsed.rows.length };
+      } catch (e) {
+        report.action[sport] = { error: String(e.message || e) };
+        report.errors.push(`action ${sport}: ${e.message || e}`);
+      }
+    }
+    if (changed) {
+      const cut = new Date(Date.now() - 10 * 24 * 3600e3).toISOString().slice(0, 10);
+      for (const k of Object.keys(extDoc.rows)) if (extDoc.rows[k].date < cut) delete extDoc.rows[k];
+      extDoc.rev = (extDoc.rev || 0) + 1;
+      await writeBlob(EXT_BLOB, extDoc);
+    }
+    report.externalRows = Object.keys(extDoc.rows).length;
+  }
 
   // ---- frozen formula, in code ----
   const today = ptDateStr(startedAt);
