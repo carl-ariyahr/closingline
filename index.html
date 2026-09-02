@@ -394,7 +394,10 @@ function gameDate(p){
     if(d.getTime()<now.getTime()-180*86400000)d.setFullYear(d.getFullYear()+1);   /* January games seen in December */
     else if(d.getTime()>now.getTime()+180*86400000)d.setFullYear(d.getFullYear()-1); /* December games seen in January */
   }
-  var t=String((p.signal||'')+' '+(p.game||'')).match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+  /* kickoff time, if the game/signal text carries one — but NOT the clock stamps inside confirmation tags
+     ("last 12:45pm", "on the 12:45pm read", "at 12:45pm"), which are read times, not kickoff times */
+  var sig=String(p.signal||'').replace(/\b(last|the|at)\s+\d{1,2}:\d{2}\s*(am|pm)\b/gi,'');
+  var t=String(sig+' '+(p.game||'')).match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
   if(t){d.setHours((+t[1]%12)+(/pm/i.test(t[3])?12:0),+t[2],0,0);d._hasTime=true}
   return d;
 }

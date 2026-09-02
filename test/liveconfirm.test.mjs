@@ -29,6 +29,20 @@ test('matchLiveGame maps abbreviated live names onto VSiN full names, either ori
   assert.equal(matchLiveGame(GAMES, { ...lp, game: 'NYM Mets @ TB Rays — Sep 2 (MLB)' }), null);
 });
 
+test('college board names: "ST" and shared mascots never match the wrong game', () => {
+  const mk = (code, away, home) => ({ gamecode: code, sport: 'CFB', date: '2026-09-05', away, home,
+    spread: { line_home: -30, away: {}, home: {} }, total: { line: 55.5, over: { handle: 3, bets: 72 }, under: { handle: 97, bets: 28 } }, ml: { away: {}, home: {} } });
+  const cfb = [
+    mk('20260905CFB00165', 'Nicholls ST', 'Kansas ST Wildcats'),
+    mk('20260905CFB00194', 'S Dakota ST', 'Northwestern Wildcats'),
+    mk('20260905CFB00155', 'Tennessee ST', 'Georgia Bulldogs'),
+  ];
+  assert.equal(matchLiveGame(cfb, { type: 'Total', pick: 'Over 55.5', game: 'Nicholls ST @ Kansas ST Wildcats — Sep 5 (CFB)' })?.gamecode, '20260905CFB00165');
+  assert.equal(matchLiveGame(cfb, { type: 'Total', pick: 'Over 46.5', game: 'S Dakota ST @ Northwestern Wildcats — Sep 5 (CFB)' })?.gamecode, '20260905CFB00194');
+  assert.equal(matchLiveGame(cfb, { type: 'Total', pick: 'Over 56.5', game: 'Tennessee ST @ Georgia Bulldogs — Sep 5 (CFB)' })?.gamecode, '20260905CFB00155');
+  assert.equal(matchLiveGame(cfb, { type: 'Total', pick: 'Over 50', game: 'Murray ST @ Kansas ST Wildcats — Sep 5 (CFB)' }), null);
+});
+
 test('liveSide: team picks resolve to away/home, totals to over/under', () => {
   const g = GAMES[0];
   assert.equal(liveSide({ type: 'Moneyline', pick: 'STL Cardinals ML +203' }, g), 'away');

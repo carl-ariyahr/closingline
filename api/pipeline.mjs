@@ -208,7 +208,11 @@ export default async function handler(req, res) {
           if (lp.result && lp.result !== 'pending') continue;
           if (lp.status === 'dead' || lp.status === 'logged') continue;
           const g = matchLiveGame(freshGames, lp);
-          if (!g) { report.liveConfirm.notOnBoard++; continue; } // started / off the board — leave it alone
+          if (!g) { report.liveConfirm.notOnBoard++; continue; } // off the board — leave it alone
+          // "until it starts": VSiN keeps in-progress games on the page, so use Action's start time when we have it
+          const started = Object.values(extDoc.rows).some(r => r.league === g.sport && r.date === g.date && r.start
+            && new Date(r.start) <= startedAt && matchPair([r], g.away, g.home, x => x.away, x => x.home).length);
+          if (started) { report.liveConfirm.notOnBoard++; continue; }
           const chk = liveCheck(lp, g, startedAt);
           report.liveConfirm.checked++;
           report.liveConfirm[chk.ok ? 'ok' : chk.why] = (report.liveConfirm[chk.ok ? 'ok' : chk.why] || 0) + 1;
