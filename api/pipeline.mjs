@@ -212,10 +212,23 @@ export default async function handler(req, res) {
     const ev = espnCache[key] ? matchGame(espnCache[key], g) : null;
     return ev?.date || null;
   }
-  report.started = 0; report.noStartTime = 0; report.assumedStarted = 0;
+  report.started = 0; report.noStartTime = 0; report.assumedStarted = 0; report.fcsExcluded = 0; report.divisionUnknown = 0;
   const todayPT = ptDateStr(startedAt);
   const hourPT = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false }).format(startedAt));
+  // CFB scope (Carl 2026-09-02): at least one FBS team. ESPN's FBS scoreboard (group 80) lists every game an FBS
+  // team plays, so a CFB game found only in group 81 is FCS-vs-FCS and is kept out of the pick search.
+  async function espnEventFor(g) {
+    const key = `${g.sport}|${g.date}`;
+    if (!(key in espnCache)) { try { espnCache[key] = await fetchScoreboard(g.sport, String(g.date).replace(/-/g, '')); } catch { espnCache[key] = null; } }
+    return espnCache[key] ? matchGame(espnCache[key], g) : null;
+  }
   for (const g of Object.values(keptBySport).flat()) {
+    if (g.sport === 'CFB') {
+      const ev = await espnEventFor(g);
+      g.fbs = ev ? ev.group === '80' : null;
+      if (g.fbs === false) { g.excluded = 'fcs-only'; report.fcsExcluded++; }
+      else if (g.fbs === null) { g.excluded = 'division-unknown'; report.divisionUnknown++; }
+    }
     g.start = await startTimeFor(g);
     if (g.start) {
       g.started = new Date(g.start) <= startedAt;
@@ -233,10 +246,12 @@ export default async function handler(req, res) {
     const pre = kept.filter(g => !g.started);
     if (pre.length) snapDoc.snapshots.push({ ts, sport, games: pre });
   }
+  const excludedCodes = new Set();
   {
-    const pre = freshGames.filter(g => !g.started);
+    const pre = freshGames.filter(g => !g.started && !g.excluded);
+    for (const g of freshGames) if (g.excluded && g.gamecode) excludedCodes.add(g.gamecode);
     freshGames.length = 0; freshGames.push(...pre);
-    for (const k of Object.keys(freshByCode)) if (freshByCode[k].started) delete freshByCode[k];
+    for (const k of Object.keys(freshByCode)) if (freshByCode[k].started || freshByCode[k].excluded) delete freshByCode[k];
   }
 
   // ---- 2b. LIVE CARD re-confirmation — code, every run, until the game starts (Carl 2026-09-02) ----
@@ -253,6 +268,14 @@ export default async function handler(req, res) {
           if (lp.kind && lp.kind !== 'fade') continue;
           if (lp.result && lp.result !== 'pending') continue;
           if (lp.status === 'dead' || lp.status === 'logged') continue;
+          if (/\(CFB\)/.test(String(lp.game))) { // scope rule: at least one FBS team (Carl 2026-09-02)
+            const ex = matchLiveGame(Object.values(keptBySport).flat().filter(x => x.excluded === 'fcs-only'), lp);
+            if (ex) {
+              lp.status = 'dead';
+              lp.signal = `${String(lp.signal || '').replace(/\s*·\s*✖ retired[^·]*/g, '')} · ✖ retired — FCS-vs-FCS game (college picks need at least one FBS team, Carl 2026-09-02)`;
+              report.liveConfirm.fcsRetired = (report.liveConfirm.fcsRetired || 0) + 1; changed = true; continue;
+            }
+          }
           const g = matchLiveGame(freshGames, lp); // freshGames is pre-game only (step 2a)
           if (!g) { report.liveConfirm.notOnBoard++; continue; } // started / off the board — leave it alone
           if (g.start && lp.start !== g.start) { lp.start = g.start; changed = true; } // show the kickoff on the card
@@ -353,6 +376,7 @@ export default async function handler(req, res) {
   //         marked 'faded' (kept, flagged) and restored if it qualifies again. Never re-posted as new.
   for (const p of allPicks) {
     if (p.result) continue;
+    if (excludedCodes.has(p.gamecode) && p.status !== 'retired') { p.status = 'retired'; p.retiredAt = ts; p.retiredReason = 'FCS-vs-FCS game — college picks need at least one FBS team'; report.retired = (report.retired || 0) + 1; continue; }
     const g = freshByCode[p.gamecode];
     if (!g) continue; // not on today's page (started / off the board) — leave as is
     const fresh = evalGame(g, startedAt).find(x => x.type === p.type);

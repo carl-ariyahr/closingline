@@ -75,7 +75,7 @@ export default async function handler(req, res) {
   }
   // shadow: every pick (any posting day) whose game date is `day`, excluding faded ones
   const shadowPicks = [];
-  for (const d of Object.values(shadow?.days || {})) for (const p of d.picks || []) if (p.date === day && p.status !== 'faded') shadowPicks.push(p);
+  for (const d of Object.values(shadow?.days || {})) for (const p of d.picks || []) if (p.date === day && p.status !== 'faded' && p.status !== 'retired') shadowPicks.push(p);
 
   const index = arr => {
     const m = new Map();
