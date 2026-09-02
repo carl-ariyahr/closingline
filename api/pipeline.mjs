@@ -12,6 +12,32 @@ import { loadContention } from '../lib/contention.mjs';
 
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
 const PICKS_BLOB = 'closing-line-shadow-picks.json';
+const EXT_BLOB = 'closing-line-external-splits.json'; // session-ingested Action Network / DonBest reads (annotation only)
+
+// Cross-confirm a fade pick against an externally-ingested split (e.g., Action Network consensus bets%).
+// Returns a note string or null. Never affects tier/formula. (exported for tests)
+export function externalNote(extDoc, p) {
+  if (!extDoc?.rows) return null;
+  const lw = s => String(s || '').toLowerCase().replace(/[^a-z]/g, '').split(/\s+/).pop();
+  const lastWord = s => String(s || '').trim().split(/\s+/).pop().toLowerCase().replace(/[^a-z]/g, '');
+  const mk = p.type === 'Moneyline' ? 'ML' : p.type === 'Spread' ? 'Spread' : 'Total';
+  const row = Object.values(extDoc.rows).find(r => r.league === p.sport && r.date === p.date && r.market === mk
+    && lastWord(r.away) === lastWord(p.away) && lastWord(r.home) === lastWord(p.home));
+  if (!row || row.a?.bets == null || row.b?.bets == null) return null;
+  const pubSide = row.a.bets >= row.b.bets ? row.a : row.b;
+  const pubName = String(pubSide.name || '');
+  // team-side names carry suffixes like "ML", "1H", "F5" and a line (+1.5 / -110); strip before comparing nicknames
+  const teamKey = s => lastWord(String(s || '').replace(/\b(ML|1H|F5)\b/gi, '').replace(/[+-]?\d[\d.]*\s*$/, '').trim());
+  // does the external public side agree with the VSiN public side?
+  const agrees = mk === 'Total'
+    ? (/over/i.test(pubName) === /over/i.test(p.publicSide))
+    : (teamKey(pubName) === teamKey(p.publicSide) || lw(pubName).includes(teamKey(p.publicSide)));
+  const src = row.source === 'actionnetwork' ? 'Action Network' : row.source;
+  const money = pubSide.money != null ? `, ${pubSide.money}% of money` : '';
+  return agrees
+    ? `✓ ${src} confirms public on ${pubName} (${pubSide.bets}% of bets${money})`
+    : `⚠ ${src} shows public on ${pubName} (${pubSide.bets}% of bets${money}) — disagrees with DK`;
+}
 const CONTINUITY_MAX_SWING = 20; // tickets are cumulative; a bigger hourly swing = misread
 
 async function readBlob(name, fallback) {
@@ -48,6 +74,8 @@ export default async function handler(req, res) {
 
   const snapDoc = await readBlob(SNAP_BLOB, { rev: 0, snapshots: [] });
   const picksDoc = await readBlob(PICKS_BLOB, { rev: 0, days: {} });
+  const extDoc = await readBlob(EXT_BLOB, { rev: 0, rows: {} }); // Action Network / DonBest session reads
+  report.externalRows = Object.keys(extDoc.rows || {}).length;
 
   const prevBySport = {};
   for (const s of snapDoc.snapshots) prevBySport[s.sport] = s; // last one per sport wins
@@ -166,6 +194,7 @@ export default async function handler(req, res) {
       }
 
       const contNote = contentionNote(p.sport, p.away, p.home);
+      const extNote = externalNote(extDoc, p); // Action Network / DonBest cross-confirm (annotation only)
       const pick = {
         ...p,
         game: `${p.away} @ ${p.home} — ${p.date} (${p.sport})`,
@@ -173,8 +202,9 @@ export default async function handler(req, res) {
           + (p.downgraded.length ? ` · downgraded to watch (${p.downgraded.join(', ')})` : '')
           + (key ? ` · ${key}` : '')
           + (sharpNote ? ` · ${sharpNote}` : '')
+          + (extNote ? ` · ${extNote}` : '')
           + (contNote ? ` · ${contNote}` : ''),
-        sharp, contention: contNote || null,
+        sharp, contention: contNote || null, external: extNote || null,
         postedAt: startedAt.toISOString(),
       };
       day.picks.push(pick);
