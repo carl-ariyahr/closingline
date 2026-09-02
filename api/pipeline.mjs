@@ -285,9 +285,9 @@ export default async function handler(req, res) {
       : { ts, ok: false };
     p.checks = [...(p.checks || []), now].slice(-MAX_CHECKS);
     p.lastSeenAt = ts;
+    if (p.date !== g.date) { p.dateWas = p.date; p.date = g.date; p.game = `${g.away} @ ${g.home} — ${g.date} (${g.sport})`; } // legacy first-header date bug — fix even when faded so grading finds the right day
     if (fresh && sameSide) {
       if (!p.side) { p.side = fresh.side; p.pickTeam = fresh.pickTeam ?? null; p.total = fresh.total ?? p.total ?? null; p.dhIndex = g.dhIndex ?? 0; }
-      if (p.date !== g.date) { p.dateWas = p.date; p.date = g.date; p.game = `${g.away} @ ${g.home} — ${g.date} (${g.sport})`; } // legacy first-header date bug
       const wasFaded = p.status === 'faded';
       p.status = 'active';
       if (wasFaded) { report.restored++; p.restoredAt = ts; }
