@@ -7,6 +7,8 @@ import { put, get } from '@vercel/blob';
 import { SPORTS, fetchSplitsHTML, parseSplits, validateGame } from '../lib/vsin.mjs';
 import { evalGame, keyNumberNote } from '../lib/formula.mjs';
 import { loadSharpBoard } from '../lib/oddsapi.mjs';
+import { gradePicks } from '../lib/grade.mjs';
+import { loadContention } from '../lib/contention.mjs';
 
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
 const PICKS_BLOB = 'closing-line-shadow-picks.json';
@@ -115,6 +117,22 @@ export default async function handler(req, res) {
   const sportsWithGames = [...new Set(freshGames.map(g => g.sport))];
   for (const sport of sportsWithGames) await board(sport); // warm boards
 
+  // contention boards (ESPN standings, free) for sports we post + that have standings
+  const contention = {};
+  for (const sport of sportsWithGames) {
+    try { contention[sport] = await loadContention(sport); }
+    catch (e) { contention[sport] = null; report.errors.push(`standings ${sport}: ${e.message || e}`); }
+  }
+  function contentionNote(sport, away, home) {
+    const c = contention[sport];
+    if (!c) return null;
+    const a = c.forTeam(away), h = c.forTeam(home);
+    const outs = [];
+    if (a?.out) outs.push(`${away} (${a.why})`);
+    if (h?.out) outs.push(`${home} (${h.why})`);
+    return outs.length ? `⚾ CONTENTION: ${outs.join(' & ')} out of the playoff race — late-season lineups make public signals less reliable` : null;
+  }
+
   for (const g of freshGames) {
     for (const p of evalGame(g, startedAt)) {
       const k = `${p.gamecode}|${p.type}`;
@@ -147,14 +165,16 @@ export default async function handler(req, res) {
         }
       }
 
+      const contNote = contentionNote(p.sport, p.away, p.home);
       const pick = {
         ...p,
         game: `${p.away} @ ${p.home} — ${p.date} (${p.sport})`,
         signal: `PUBLIC ${p.T}% of tickets on ${p.publicSide}${p.publicLine ? ' ' + p.publicLine : ''} but only ${p.H}% of the money — we take ${p.pick}${p.line ? ' ' + p.line : ''} · ${p.D} pt gap`
           + (p.downgraded.length ? ` · downgraded to watch (${p.downgraded.join(', ')})` : '')
           + (key ? ` · ${key}` : '')
-          + (sharpNote ? ` · ${sharpNote}` : ''),
-        sharp,
+          + (sharpNote ? ` · ${sharpNote}` : '')
+          + (contNote ? ` · ${contNote}` : ''),
+        sharp, contention: contNote || null,
         postedAt: startedAt.toISOString(),
       };
       day.picks.push(pick);
@@ -162,12 +182,26 @@ export default async function handler(req, res) {
     }
   }
 
+  // ---- GRADE finished shadow picks (ESPN, free) ----
+  const ungraded = [];
+  for (const [d, dd] of Object.entries(picksDoc.days)) for (const p of dd.picks) if (!p.result) ungraded.push(p);
+  report.graded = [];
+  try {
+    const results = await gradePicks(ungraded);
+    for (const { pick, result } of results) {
+      pick.result = result;
+      pick.gradedAt = startedAt.toISOString();
+      report.graded.push({ result, pick: pick.pick, game: pick.game });
+    }
+  } catch (e) { report.errors.push(`grading: ${e.message || e}`); }
+
   // prune pick days older than 14 days
   for (const d of Object.keys(picksDoc.days)) {
     if (new Date(d) < new Date(Date.now() - 14 * 24 * 3600e3)) delete picksDoc.days[d];
   }
   picksDoc.rev = (picksDoc.rev || 0) + 1;
   picksDoc.lastRun = report;
+  picksDoc.heartbeat = startedAt.toISOString(); // freshness beacon for the monitor
   await writeBlob(PICKS_BLOB, picksDoc);
 
   report.tookMs = Date.now() - startedAt.getTime();
