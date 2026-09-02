@@ -212,11 +212,21 @@ export default async function handler(req, res) {
     const ev = espnCache[key] ? matchGame(espnCache[key], g) : null;
     return ev?.date || null;
   }
-  report.started = 0; report.noStartTime = 0;
+  report.started = 0; report.noStartTime = 0; report.assumedStarted = 0;
+  const todayPT = ptDateStr(startedAt);
+  const hourPT = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false }).format(startedAt));
   for (const g of Object.values(keptBySport).flat()) {
     g.start = await startTimeFor(g);
-    if (!g.start) report.noStartTime++;
-    g.started = !!(g.start && new Date(g.start) <= startedAt);
+    if (g.start) {
+      g.started = new Date(g.start) <= startedAt;
+    } else {
+      // unknown start time (mostly FCS games neither Action nor ESPN names the way VSiN does): to guarantee
+      // pre-game-only data, a same-day game is treated as started from 8am PT on — we lose a few morning
+      // reads on those, never an in-game read
+      report.noStartTime++;
+      g.started = g.date === todayPT && hourPT >= 8;
+      if (g.started) report.assumedStarted++;
+    }
     if (g.started) report.started++;
   }
   for (const [sport, kept] of Object.entries(keptBySport)) {
