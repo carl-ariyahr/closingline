@@ -174,7 +174,7 @@ export default async function handler(req, res) {
           const prevRow = extDoc.rows[k];
           const same = prevRow && prevRow.a?.bets === r.a.bets && prevRow.b?.bets === r.b.bets && prevRow.a?.money === r.a.money && prevRow.b?.money === r.b.money;
           if (same) continue;
-          extDoc.rows[k] = { source: 'actionnetwork', league: sport, away: r.away, home: r.home, date: r.date, market: r.market, line: r.line, a: r.a, b: r.b, numBets: r.numBets, dhIndex: r.dhIndex || 0, pulledAt: ts };
+          extDoc.rows[k] = { source: 'actionnetwork', league: sport, away: r.away, home: r.home, date: r.date, start: r.start, market: r.market, line: r.line, a: r.a, b: r.b, numBets: r.numBets, dhIndex: r.dhIndex || 0, pulledAt: ts };
           changed++;
         }
         report.action[sport] = { games: parsed.games, rows: parsed.rows.length, changed };
