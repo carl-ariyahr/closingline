@@ -135,6 +135,13 @@
   .cchip.confirmed{background:var(--win-dim);color:var(--win);border-color:rgba(85,181,134,.4)}
   .cchip.caution{background:var(--amber-dim);color:var(--amber);border-color:rgba(233,169,74,.5)}
   .cchip.unconfirmed{color:var(--faint)}
+  /* hourly code re-confirmation of live picks */
+  .cchip.lcok{background:var(--win-dim);color:var(--win);border-color:rgba(85,181,134,.4)}
+  .cchip.lcwarn{background:var(--amber-dim);color:var(--amber);border-color:rgba(233,169,74,.5)}
+  .cchip.lcbad{background:rgba(224,82,82,.14);color:#e05252;border-color:rgba(224,82,82,.5);font-weight:600}
+  /* 98/2 read — posted at its tier, with an asterisk */
+  .kbadge.flag98{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(233,169,74,.5)}
+  sup.ast{color:var(--amber);font-weight:700;font-size:.8em;margin-left:1px}
   .stab{flex:none;background:var(--raised);border:1px solid var(--line);border-radius:16px;color:var(--muted);font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:6px 14px;cursor:pointer;white-space:nowrap}
   .stab.on{background:var(--amber);border-color:var(--amber);color:#1A1408}
   .dots{display:flex;gap:4px;flex-wrap:wrap}
@@ -801,9 +808,20 @@ function render(){
     var pushNote=wn?'<span class="histhint"> \u00b7 whole number \u2014 push possible; confirm the exact line at your book</span>':'';
     var gameTxt=String(p.game||'').replace(/\s*\((NFL|WNBA|NBA|CFB|CBB|MLB|NHL|UFC)\)\s*$/i,'');
     var logBtn=BET_TRACKING?'<button class="plog" data-action="usepick" data-pick="'+esc(p.pick)+'" data-game="'+esc(p.game)+'" data-ptype="'+esc(p.type||'Spread')+'">Log it</button>':'';
-    return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+'"><span class="kbadge '+kb+'">'+kl+'</span>'+stack
-      +'<div class="pmain">'+sp+'<b>'+esc(p.pick)+'</b> · '+esc(gameTxt)+pushNote+'<div class="psig">'+esc(p.signal||'')+'</div></div>'
+    /* * 98/2 read: one side at ≥98% or ≤2% — posted at its tier, with an asterisk (Carl 2026-09-02) */
+    var f98=(p.flag98||/98\/2 read/.test(String(p.signal||'')))?'<span class="kbadge flag98" title="98/2 read — one side sits at 98%+ or 2%-: a tiny or lopsided sample. Posted at its tier, treat with care.">* 98/2</span>':'';
+    /* hourly CODE re-confirmation of live picks (lib/liveconfirm.mjs writes p.liveCheck) */
+    var lc='', L=p.liveCheck;
+    if(L&&(!p.result||p.result==='pending')){
+      var when=L.ts?new Date(L.ts).toLocaleTimeString('en-US',{timeZone:'America/Los_Angeles',hour:'numeric',minute:'2-digit'}).toLowerCase().replace(' ',''):'';
+      lc=L.ok?'<span class="cchip lcok" title="Code re-read the live board and this pick still qualifies on the same side">✓ re-confirmed '+(L.n||1)+'× · '+esc(when)+'</span>'
+        :L.why==='flipped'?'<span class="cchip lcbad" title="The public is now on OUR side — the formula would not take this any more">⛔ public flipped · '+esc(when)+'</span>'
+        :L.why==='faded'?'<span class="cchip lcwarn" title="Same public side but below the 60/8 bar on the latest read">⚠ faded · '+esc(when)+'</span>':'';
+    }
+    return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+'"><span class="kbadge '+kb+'">'+kl+'</span>'+stack+f98
+      +'<div class="pmain">'+sp+'<b>'+esc(p.pick)+(f98?'<sup class="ast">*</sup>':'')+'</b> · '+esc(gameTxt)+pushNote+'<div class="psig">'+esc(p.signal||'')+'</div></div>'
       +res
+      +lc
       +confirmChip(p)
       +'<span class="pstat '+esc(p.status||'lean')+'">'+esc(p.status||'lean')+'</span>'
       +logBtn+'</div>';

@@ -39,10 +39,23 @@ test('college always downgrades to watch (the Tulsa case: D=26 stays watch)', ()
   assert.ok(r.downgraded.includes('college'));
 });
 
-test('98/2 artifact downgrades to watch', () => {
+test('98/2 read keeps its tier but is flagged (Carl 2026-09-02: post it with an asterisk)', () => {
+  const r = evalMarket('MLB', {
+    a: { name: 'Over 8.5', bets: 65, handle: 2 },
+    b: { name: 'Under 8.5', bets: 35, handle: 98 },
+  });
+  assert.equal(r.pick, 'Under 8.5');
+  assert.equal(r.tier, 'play');      // D = 63 — tier is NOT forced down any more
+  assert.equal(r.flag98, true);      // …but it carries the asterisk flag
+  const clean = evalMarket('MLB', { a: { name: 'A', bets: 70, handle: 40 }, b: { name: 'B', bets: 30, handle: 60 } });
+  assert.equal(clean.flag98, false);
+});
+
+test('99/1 tickets: flagged, tier from D, not listed as a downgrade', () => {
   const r = evalMarket('NBA', { a: { name: 'A', bets: 99, handle: 60 }, b: { name: 'B', bets: 1, handle: 40 } });
-  assert.equal(r.tier, 'watch');
-  assert.ok(r.downgraded.includes('98/2 artifact'));
+  assert.equal(r.tier, 'play');
+  assert.equal(r.flag98, true);
+  assert.ok(!r.downgraded.some(d => /98/.test(d)));
 });
 
 test('spread >= 20 downgrades to watch', () => {

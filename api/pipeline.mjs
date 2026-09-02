@@ -1,7 +1,8 @@
 // Deterministic pick pipeline — SHADOW MODE.
 // Every run (hourly): VSiN splits → Action Network splits → frozen formula → post NEW picks →
 // RE-CONFIRM every open pick against the fresh read → grade finished picks → write shadow blobs.
-// It NEVER touches the live picks/lines docs until Carl approves the cutover.
+// Live docs: it never adds/removes/re-tiers live picks before cutover; the ONLY live write is step 2b,
+// which stamps hourly re-confirmation tags on Carl's open fade picks (Carl 2026-09-02).
 import { put, get } from '@vercel/blob';
 import { SPORTS, fetchSplitsHTML, parseSplits, scrubGame } from '../lib/vsin.mjs';
 import { evalGame, keyNumberNote } from '../lib/formula.mjs';
@@ -10,7 +11,9 @@ import { gradePicks } from '../lib/grade.mjs';
 import { loadContention } from '../lib/contention.mjs';
 import { AN_LEAGUE, fetchActionHTML, parseActionSplits } from '../lib/actionnetwork.mjs';
 import { sameTeam, matchPair, stripPickSuffix, nick } from '../lib/names.mjs';
+import { matchLiveGame, liveCheck, applyLiveCheck } from '../lib/liveconfirm.mjs';
 
+const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
 const PICKS_BLOB = 'closing-line-shadow-picks.json';
 const EXT_BLOB = 'closing-line-external-splits.json'; // Action Network (code-pulled) + any session-fed rows
@@ -190,6 +193,32 @@ export default async function handler(req, res) {
     report.externalRows = Object.keys(extDoc.rows).length;
   }
 
+  // ---- 2b. LIVE CARD re-confirmation — code, every run, until the game starts (Carl 2026-09-02) ----
+  // Re-reads every open fade pick on Carl's live slate cards against this run's VSiN parse and stamps
+  // ONE replaceable tag + a structured liveCheck. Never adds, removes, or re-tiers a live pick.
+  report.liveConfirm = { checked: 0, ok: 0, faded: 0, flipped: 0, unmatched: 0, notOnBoard: 0, written: false };
+  try {
+    const live = await readBlob(LIVE_PICKS_BLOB, null);
+    if (live?.cards) {
+      let changed = false;
+      for (const c of live.cards) {
+        if (!/^slate-/.test(String(c.id)) || !Array.isArray(c.picks)) continue;
+        for (const lp of c.picks) {
+          if (lp.kind && lp.kind !== 'fade') continue;
+          if (lp.result && lp.result !== 'pending') continue;
+          if (lp.status === 'dead' || lp.status === 'logged') continue;
+          const g = matchLiveGame(freshGames, lp);
+          if (!g) { report.liveConfirm.notOnBoard++; continue; } // started / off the board — leave it alone
+          const chk = liveCheck(lp, g, startedAt);
+          report.liveConfirm.checked++;
+          report.liveConfirm[chk.ok ? 'ok' : chk.why] = (report.liveConfirm[chk.ok ? 'ok' : chk.why] || 0) + 1;
+          if (applyLiveCheck(lp, chk, startedAt)) changed = true;
+        }
+      }
+      if (changed) { live.rev = (live.rev || 0) + 1; await writeBlob(LIVE_PICKS_BLOB, live); report.liveConfirm.written = true; }
+    }
+  } catch (e) { report.errors.push(`live confirm: ${e.message || e}`); }
+
   // ---- 3. frozen formula: NEW picks ----
   const today = ptDateStr(startedAt);
   const day = picksDoc.days[today] || (picksDoc.days[today] = { picks: [] });
@@ -260,7 +289,9 @@ export default async function handler(req, res) {
         game: `${p.away} @ ${p.home} — ${p.date} (${p.sport})`,
         signal: `PUBLIC ${p.T}% of tickets on ${p.publicSide}${p.publicLine ? ' ' + p.publicLine : ''} but only ${p.H}% of the money — we take ${p.pick}${p.line ? ' ' + p.line : ''} · ${p.D} pt gap`
           + (p.downgraded.length ? ` · downgraded to watch (${p.downgraded.join(', ')})` : '')
+          + (p.flag98 ? ' · * 98/2 read — one side sits at ≥98% or ≤2%: tiny or lopsided sample, treat with care' : '')
           + (keyNote ? ` · ${keyNote}` : '') + (sharpNote ? ` · ${sharpNote}` : '') + (extNote ? ` · ${extNote}` : '') + (contNote ? ` · ${contNote}` : ''),
+        flag98: !!p.flag98,
         sharp, sharpNote: sharpNote || null, contention: contNote || null, external: extNote || null,
         confirmation: confirmationLevel(extNote),
       };
