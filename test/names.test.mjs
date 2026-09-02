@@ -23,6 +23,7 @@ test('college shorthand: VSiN board names resolve to ESPN location/display names
     ['S Alabama Jaguars', 'South Alabama', 'South Alabama Jaguars', true],
     ['S Alabama Jaguars', 'Alabama', 'Alabama Crimson Tide', false],
     ['Murray ST', 'Murray State', 'Murray State Racers', true],
+    ['UTRGV', 'UT Rio Grande Valley', 'UT Rio Grande Valley Vaqueros', true],
   ];
   for (const [v, loc, name, want] of cases) assert.equal(fuzzyTeam(v, loc, name), want, `${v} vs ${name}`);
 });
