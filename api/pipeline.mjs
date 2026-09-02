@@ -227,7 +227,7 @@ export default async function handler(req, res) {
       const ev = await espnEventFor(g);
       g.fbs = ev ? ev.group === '80' : null;
       if (g.fbs === false) { g.excluded = 'fcs-only'; report.fcsExcluded++; }
-      else if (g.fbs === null) { g.excluded = 'division-unknown'; report.divisionUnknown++; }
+      else if (g.fbs === null) report.divisionUnknown++; // can't tell → keep it (never drop a real FBS game on a name miss)
     }
     g.start = await startTimeFor(g);
     if (g.start) {
