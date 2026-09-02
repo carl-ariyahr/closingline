@@ -181,7 +181,11 @@ export default async function handler(req, res) {
       }
     }
     const cut = new Date(Date.now() - 4 * 24 * 3600e3).toISOString().slice(0, 10);
-    for (const k of Object.keys(extDoc.rows)) if (extDoc.rows[k].date < cut) { delete extDoc.rows[k]; changed++; }
+    for (const k of Object.keys(extDoc.rows)) {
+      const r = extDoc.rows[k];
+      // drop stale rows, and legacy keys (pre-dhIndex format: 5 pipes) so a game never has two rows
+      if (r.date < cut || (r.source === 'actionnetwork' && k.split('|').length === 6)) { delete extDoc.rows[k]; changed++; }
+    }
     if (changed) { extDoc.rev = (extDoc.rev || 0) + 1; await writeBlob(EXT_BLOB, extDoc); }
     report.externalRows = Object.keys(extDoc.rows).length;
   }
@@ -274,12 +278,16 @@ export default async function handler(req, res) {
     const g = freshByCode[p.gamecode];
     if (!g) continue; // not on today's page (started / off the board) — leave as is
     const fresh = evalGame(g, startedAt).find(x => x.type === p.type);
+    // legacy picks (before 2026-09-02) have no `side` field — compare the pick label instead, then backfill
+    const sameSide = fresh ? (p.side ? fresh.side === p.side : fresh.pick === p.pick) : false;
     const now = fresh
-      ? { ts, T: fresh.T, H: fresh.H, D: fresh.D, tier: fresh.tier, ok: true, sameSide: fresh.side === p.side }
+      ? { ts, T: fresh.T, H: fresh.H, D: fresh.D, tier: fresh.tier, ok: true, sameSide }
       : { ts, ok: false };
     p.checks = [...(p.checks || []), now].slice(-MAX_CHECKS);
     p.lastSeenAt = ts;
-    if (fresh && fresh.side === p.side) {
+    if (fresh && sameSide) {
+      if (!p.side) { p.side = fresh.side; p.pickTeam = fresh.pickTeam ?? null; p.total = fresh.total ?? p.total ?? null; p.dhIndex = g.dhIndex ?? 0; }
+      if (p.date !== g.date) { p.dateWas = p.date; p.date = g.date; p.game = `${g.away} @ ${g.home} — ${g.date} (${g.sport})`; } // legacy first-header date bug
       const wasFaded = p.status === 'faded';
       p.status = 'active';
       if (wasFaded) { report.restored++; p.restoredAt = ts; }
