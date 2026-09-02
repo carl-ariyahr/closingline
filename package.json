@@ -2,6 +2,7 @@
   "name": "closing-line",
   "private": true,
   "dependencies": {
-    "@vercel/blob": "^2.3.0"
+    "@vercel/blob": "^2.3.0",
+    "node-html-parser": "^9.0.2"
   }
 }

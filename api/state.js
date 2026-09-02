@@ -5,8 +5,12 @@ const DOCS = {
   lines: 'closing-line-lines.json',   // line & splits snapshot history
   picks: 'closing-line-picks.json',   // Claude's suggested picks (fade cards)
   journal: 'closing-line-journal.json', // daily grading, system record, strategy recommendations
-  sentiment: 'closing-line-sentiment.json' // NFL public/expert straight-up sentiment per game
+  sentiment: 'closing-line-sentiment.json', // NFL public/expert straight-up sentiment per game
+  // shadow docs are written ONLY by api/pipeline.js (the code pipeline) — read-only here
+  shadowpicks: 'closing-line-shadow-picks.json',
+  shadowlines: 'closing-line-shadow-lines.json'
 };
+const READ_ONLY_DOCS = new Set(['shadowpicks', 'shadowlines']);
 
 export default async function handler(req, res) {
   const key = req.headers['x-app-key'] || req.query.k;
@@ -31,6 +35,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'PUT' || req.method === 'POST') {
+    if (READ_ONLY_DOCS.has(req.query.doc)) return res.status(405).json({ error: 'read-only doc' });
     const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
     if (!body || body.length > 4 * 1024 * 1024) {
       return res.status(400).json({ error: 'bad payload' });
