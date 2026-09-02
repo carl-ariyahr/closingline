@@ -7,7 +7,7 @@ import { put, get } from '@vercel/blob';
 import { SPORTS, fetchSplitsHTML, parseSplits, scrubGame } from '../lib/vsin.mjs';
 import { evalGame, keyNumberNote } from '../lib/formula.mjs';
 import { loadSharpBoard } from '../lib/oddsapi.mjs';
-import { gradePicks } from '../lib/grade.mjs';
+import { gradePicks, fetchScoreboard, matchGame } from '../lib/grade.mjs';
 import { loadContention } from '../lib/contention.mjs';
 import { AN_LEAGUE, fetchActionHTML, parseActionSplits } from '../lib/actionnetwork.mjs';
 import { sameTeam, matchPair, stripPickSuffix, nick } from '../lib/names.mjs';
@@ -124,6 +124,7 @@ export default async function handler(req, res) {
   // ---- 1. VSiN (deciding source) ----
   const freshGames = [];
   const freshByCode = {};
+  const keptBySport = {};
   for (const sport of SPORTS) {
     try {
       const games = parseSplits(await fetchSplitsHTML(sport), sport, startedAt);
@@ -149,7 +150,7 @@ export default async function handler(req, res) {
       }
       report.sports[sport] = { parsed: games.length, kept: kept.length, scrubbed };
       for (const g of kept) if (!g.carried) { freshGames.push(g); freshByCode[g.gamecode] = g; }
-      if (kept.length) snapDoc.snapshots.push({ ts, sport, games: kept });
+      keptBySport[sport] = kept; // snapshots are written in step 2a, after started games are removed
     } catch (e) {
       report.sports[sport] = { error: String(e.message || e) };
       report.errors.push(`${sport}: ${e.message || e}`);
@@ -193,6 +194,41 @@ export default async function handler(req, res) {
     report.externalRows = Object.keys(extDoc.rows).length;
   }
 
+  // ---- 2a. START TIMES → pre-game reads only (Carl 2026-09-02: "nothing matters after the game is over;
+  //          do not pull data after it starts — it would skew the record") ----
+  // Source: Action Network rows (start_time) first; ESPN scoreboard (free) as fallback. A game whose start
+  // has passed is dropped from the snapshot, from the pick search, and from re-confirmation.
+  const pairKey = (sport, date, a, h) => `${sport}|${date}|${[nick(a), nick(h)].sort().join('~')}`;
+  const startMap = {};
+  for (const r of Object.values(extDoc.rows)) if (r.start) startMap[pairKey(r.league, r.date, r.away, r.home)] = r.start;
+  const espnCache = {};
+  async function startTimeFor(g) {
+    const direct = startMap[pairKey(g.sport, g.date, g.away, g.home)];
+    if (direct) return direct;
+    const key = `${g.sport}|${g.date}`;
+    if (!(key in espnCache)) {
+      try { espnCache[key] = await fetchScoreboard(g.sport, String(g.date).replace(/-/g, '')); } catch { espnCache[key] = null; }
+    }
+    const ev = espnCache[key] ? matchGame(espnCache[key], g) : null;
+    return ev?.date || null;
+  }
+  report.started = 0; report.noStartTime = 0;
+  for (const g of Object.values(keptBySport).flat()) {
+    g.start = await startTimeFor(g);
+    if (!g.start) report.noStartTime++;
+    g.started = !!(g.start && new Date(g.start) <= startedAt);
+    if (g.started) report.started++;
+  }
+  for (const [sport, kept] of Object.entries(keptBySport)) {
+    const pre = kept.filter(g => !g.started);
+    if (pre.length) snapDoc.snapshots.push({ ts, sport, games: pre });
+  }
+  {
+    const pre = freshGames.filter(g => !g.started);
+    freshGames.length = 0; freshGames.push(...pre);
+    for (const k of Object.keys(freshByCode)) if (freshByCode[k].started) delete freshByCode[k];
+  }
+
   // ---- 2b. LIVE CARD re-confirmation — code, every run, until the game starts (Carl 2026-09-02) ----
   // Re-reads every open fade pick on Carl's live slate cards against this run's VSiN parse and stamps
   // ONE replaceable tag + a structured liveCheck. Never adds, removes, or re-tiers a live pick.
@@ -207,12 +243,9 @@ export default async function handler(req, res) {
           if (lp.kind && lp.kind !== 'fade') continue;
           if (lp.result && lp.result !== 'pending') continue;
           if (lp.status === 'dead' || lp.status === 'logged') continue;
-          const g = matchLiveGame(freshGames, lp);
-          if (!g) { report.liveConfirm.notOnBoard++; continue; } // off the board — leave it alone
-          // "until it starts": VSiN keeps in-progress games on the page, so use Action's start time when we have it
-          const started = Object.values(extDoc.rows).some(r => r.league === g.sport && r.date === g.date && r.start
-            && new Date(r.start) <= startedAt && matchPair([r], g.away, g.home, x => x.away, x => x.home).length);
-          if (started) { report.liveConfirm.notOnBoard++; continue; }
+          const g = matchLiveGame(freshGames, lp); // freshGames is pre-game only (step 2a)
+          if (!g) { report.liveConfirm.notOnBoard++; continue; } // started / off the board — leave it alone
+          if (g.start && lp.start !== g.start) { lp.start = g.start; changed = true; } // show the kickoff on the card
           const chk = liveCheck(lp, g, startedAt);
           report.liveConfirm.checked++;
           report.liveConfirm[chk.ok ? 'ok' : chk.why] = (report.liveConfirm[chk.ok ? 'ok' : chk.why] || 0) + 1;
@@ -288,7 +321,7 @@ export default async function handler(req, res) {
       const extNote = externalNote(extDoc, p);
       const pick = {
         ...p,
-        status: 'active', firstTier: p.tier, postedAt: ts, lastSeenAt: ts, confirmedRuns: 0,
+        status: 'active', firstTier: p.tier, postedAt: ts, lastSeenAt: ts, confirmedRuns: 0, start: g.start || null,
         checks: [{ ts, T: p.T, H: p.H, D: p.D, tier: p.tier, ok: true }],
         game: `${p.away} @ ${p.home} — ${p.date} (${p.sport})`,
         signal: `PUBLIC ${p.T}% of tickets on ${p.publicSide}${p.publicLine ? ' ' + p.publicLine : ''} but only ${p.H}% of the money — we take ${p.pick}${p.line ? ' ' + p.line : ''} · ${p.D} pt gap`
