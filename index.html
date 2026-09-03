@@ -571,8 +571,13 @@ function ledgerHTML(){
     h+='<p class="histhint" style="margin:0 0 10px">No graded games yet in: '+missing.join(', ').toUpperCase()+' \u2014 tallies appear the day after those sports play.</p>';
   }
   if(flat.length){
-    flat.sort(function(a,b){return (b.w+b.l)-(a.w+a.l)});
-    h+='<div class="tscroll"><table><thead><tr><th>Angle</th><th class="num">Record</th><th class="num">Win%</th><th class="num">Sample</th></tr></thead><tbody>'
+    /* Carl 2026-09-02: highest win% at the top (ties broken by bigger sample); empty rows sink */
+    flat.sort(function(a,b){
+      var na=a.w+a.l, nb=b.w+b.l;
+      var pa=na?a.w/na:-1, pb=nb?b.w/nb:-1;
+      return (pb-pa)||(nb-na);
+    });
+    h+='<div class="tscroll"><table><thead><tr><th>Angle</th><th class="num">Record</th><th class="num">Win% ▼</th><th class="num">Sample</th></tr></thead><tbody>'
       +flat.map(function(t){
         var n=t.w+t.l; if(!n)return '';
         var pct=t.w/n*100;
