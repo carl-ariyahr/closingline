@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLiveGame, matchLiveGame, liveSide, liveCheck, applyLiveCheck } from '../lib/liveconfirm.mjs';
+import { parseLiveGame, matchLiveGame, liveSide, liveCheck, applyLiveCheck, liveGradePick } from '../lib/liveconfirm.mjs';
+import { matchGame, gradeAgainst } from '../lib/grade.mjs';
 
 const NOW = new Date('2026-09-02T20:20:00Z');
 const game = (over, under, mlAway, mlHome) => ({
@@ -79,4 +80,18 @@ test('applyLiveCheck replaces the pending tag with ONE counter tag and increment
   assert.match(lp.signal, /⚠ signal faded/);
   assert.ok(!/re-confirmed/.test(lp.signal));
   assert.equal(lp.liveCheck.n, 0);
+});
+
+test('live-card picks grade in code from their own text + ESPN finals (pro ABBR names)', () => {
+  const g = { away: 'SF Giants', home: 'PIT Pirates', date: '2026-09-03', sport: 'MLB' };
+  const events = [{ completed: true, away: 'San Francisco Giants', awayLoc: 'San Francisco', home: 'Pittsburgh Pirates', homeLoc: 'Pittsburgh', awayScore: 3, homeScore: 4, awayQ: [], homeQ: [], date: '2026-09-03T22:40Z' }];
+  const under = liveGradePick({ type: 'Total', pick: 'Under 8', game: 'SF Giants @ PIT Pirates — Sep 3 (MLB)' }, g);
+  assert.deepEqual([under.side, under.total], ['under', 8]);
+  assert.equal(gradeAgainst(matchGame(events, under), under), 'win');     // 7 runs
+  const ml = liveGradePick({ type: 'Moneyline', pick: 'San Francisco Giants ML', game: 'SF Giants @ PIT Pirates — Sep 3 (MLB)' }, g);
+  assert.equal(ml.side, 'away');
+  assert.equal(gradeAgainst(matchGame(events, ml), ml), 'loss');
+  const sp = liveGradePick({ type: 'Spread', pick: 'Murray ST +20.5', game: 'Murray ST @ Middle Tenn ST Blue Raiders — Sep 5 (CFB)' }, { away: 'Murray ST', home: 'Middle Tenn ST Blue Raiders', date: '2026-09-05', sport: 'CFB' });
+  assert.deepEqual([sp.side, sp.line], ['away', '+20.5']);
+  assert.equal(liveGradePick({ type: 'Moneyline', pick: 'Somebody Else ML', game: 'SF Giants @ PIT Pirates — Sep 3 (MLB)' }, g), null); // never guess a side
 });

@@ -142,6 +142,7 @@
   /* 98/2 read — posted at its tier, with an asterisk */
   .kbadge.flag98{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(233,169,74,.5)}
   sup.ast{color:var(--amber);font-weight:700;font-size:.8em;margin-left:1px}
+  h3.subhead{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
   /* game start time on a pick row */
   .gtime{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;margin-left:4px}
   .gtime.started{color:var(--amber)}
@@ -1001,6 +1002,9 @@ function render(){
   if(cardSub==='plays'){
   h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Today’s plays <small>highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)</small></h2>';
   h+= topPicks.length ? topPicks.map(pickRow).join('') : '<p class="none-msg">No live plays on the board — new qualifiers post the moment a snapshot finds them.</p>';
+  /* plays from today's ledger that have finished stay on the front page with their result (Carl 2026-09-03) */
+  var doneToday=sortByGame(ledgerPicks().filter(function(p){return gameISO(p)===ptISO()&&p.result&&p.result!=='pending'}));
+  if(doneToday.length){ h+='<h3 class="subhead">Finished today</h3>'+doneToday.map(pickRow).join(''); }
   /* PLAYS LEDGER (Carl 2026-09-02): the record counts ONLY picks the code stamped as shown on Today's Plays.
      Shown = counted, bet or not, faded or not. Clean start Sep 2, 2026. */
   var fRec={w:0,l:0};

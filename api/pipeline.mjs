@@ -7,11 +7,11 @@ import { put, get } from '@vercel/blob';
 import { SPORTS, fetchSplitsHTML, parseSplits, scrubGame } from '../lib/vsin.mjs';
 import { evalGame, keyNumberNote } from '../lib/formula.mjs';
 import { loadSharpBoard } from '../lib/oddsapi.mjs';
-import { gradePicks, fetchScoreboard, matchGame } from '../lib/grade.mjs';
+import { gradePicks, fetchScoreboard, matchGame, gradeAgainst } from '../lib/grade.mjs';
 import { loadContention } from '../lib/contention.mjs';
 import { AN_LEAGUE, fetchActionHTML, parseActionSplits } from '../lib/actionnetwork.mjs';
 import { sameTeam, matchPair, stripPickSuffix, nick } from '../lib/names.mjs';
-import { matchLiveGame, liveCheck, applyLiveCheck, parseLiveGame } from '../lib/liveconfirm.mjs';
+import { matchLiveGame, liveCheck, applyLiveCheck, parseLiveGame, liveGradePick } from '../lib/liveconfirm.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
@@ -305,6 +305,31 @@ export default async function handler(req, res) {
           const st = lp.start ? new Date(lp.start) : null;
           if (st && st <= startedAt) continue; // never shown pre-game on this run
           lp.playsShownAt = ts; report.playsStamped++; changed = true;
+        }
+      }
+      // ---- 2c. GRADE finished live picks in code, every run (Carl 2026-09-03: "make sure this updates as the day goes on") ----
+      // ESPN finals only; a pick whose side/number can't be read from its own text is left for the AI grader.
+      report.liveGraded = [];
+      const espnLive = {};
+      for (const c of live.cards) {
+        if (!Array.isArray(c.picks)) continue;
+        for (const lp of c.picks) {
+          if (lp.result && lp.result !== 'pending') continue;
+          if (lp.status === 'dead' || lp.kind === 'injury' || lp.kind === 'ufc') continue;
+          const g = parseLiveGame(lp.game, startedAt);
+          if (!g?.date || !g.sport || g.date > todayPT) continue;
+          if (lp.start && new Date(lp.start) > startedAt) continue;
+          const key = `${g.sport}|${g.date}`;
+          if (!(key in espnLive)) { try { espnLive[key] = await fetchScoreboard(g.sport, g.date.replace(/-/g, '')); } catch { espnLive[key] = null; } }
+          if (!espnLive[key]) continue;
+          const gp = liveGradePick(lp, g);
+          if (!gp) continue;
+          const result = gradeAgainst(matchGame(espnLive[key], gp), gp);
+          if (!result) continue;
+          lp.result = result; lp.gradedAt = ts; lp.gradedBy = 'code';
+          if (lp.status === 'play' || lp.stack) lp.featured = true;
+          report.liveGraded.push({ pick: lp.pick, game: lp.game, result });
+          changed = true;
         }
       }
       if (changed) { live.rev = (live.rev || 0) + 1; await writeBlob(LIVE_PICKS_BLOB, live); report.liveConfirm.written = true; }
