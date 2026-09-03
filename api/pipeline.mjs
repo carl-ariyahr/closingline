@@ -11,7 +11,7 @@ import { gradePicks, fetchScoreboard, matchGame } from '../lib/grade.mjs';
 import { loadContention } from '../lib/contention.mjs';
 import { AN_LEAGUE, fetchActionHTML, parseActionSplits } from '../lib/actionnetwork.mjs';
 import { sameTeam, matchPair, stripPickSuffix, nick } from '../lib/names.mjs';
-import { matchLiveGame, liveCheck, applyLiveCheck } from '../lib/liveconfirm.mjs';
+import { matchLiveGame, liveCheck, applyLiveCheck, parseLiveGame } from '../lib/liveconfirm.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
@@ -283,6 +283,25 @@ export default async function handler(req, res) {
           report.liveConfirm.checked++;
           report.liveConfirm[chk.ok ? 'ok' : chk.why] = (report.liveConfirm[chk.ok ? 'ok' : chk.why] || 0) + 1;
           if (applyLiveCheck(lp, chk, startedAt)) changed = true;
+        }
+      }
+      // ---- PLAYS LEDGER stamp (Carl 2026-09-02: "if you show it to me, it needs to be counted") ----
+      // Same rule the front page uses for Today's Plays. Once stamped, a pick is counted in the plays
+      // record no matter what happens later (faded, retired, whatever). Clean start 2026-09-02.
+      const FRONT_SKIP = new Set(['patrick-variables', 'rnd-fade', 'ufc-card', 'auto-alerts', 'wcoast-angle']);
+      report.playsStamped = 0;
+      for (const c of live.cards) {
+        if (FRONT_SKIP.has(c.id) || !Array.isArray(c.picks)) continue;
+        for (const lp of c.picks) {
+          if (lp.playsShownAt) continue;
+          if (!(lp.status === 'play' || lp.stack)) continue;
+          if (lp.status === 'dead' || lp.status === 'logged' || lp.status === 'alert') continue;
+          if (lp.result && lp.result !== 'pending') continue;
+          const g = parseLiveGame(lp.game, startedAt);
+          if (!g?.date || g.date < todayPT) continue;
+          const st = lp.start ? new Date(lp.start) : null;
+          if (st && st <= startedAt) continue; // never shown pre-game on this run
+          lp.playsShownAt = ts; report.playsStamped++; changed = true;
         }
       }
       if (changed) { live.rev = (live.rev || 0) + 1; await writeBlob(LIVE_PICKS_BLOB, live); report.liveConfirm.written = true; }

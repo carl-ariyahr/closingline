@@ -145,6 +145,13 @@
   /* game start time on a pick row */
   .gtime{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;margin-left:4px}
   .gtime.started{color:var(--amber)}
+  /* plays ledger */
+  .ledger{display:flex;flex-direction:column;gap:4px}
+  .ledrow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px}
+  .ledrow .ldate{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .ledrow .lflag{font-family:var(--mono);font-size:10.5px;color:var(--amber);margin-left:4px}
+  .ledrow .lres{font-family:var(--mono);font-weight:700;width:22px;height:22px;line-height:22px;text-align:center;border-radius:5px;background:var(--low-soft,rgba(255,255,255,.06));color:var(--muted)}
+  .ledrow .lres.win{background:var(--win-dim);color:var(--win)} .ledrow .lres.loss{background:rgba(224,82,82,.14);color:#e05252}
   /* record by tab (Record tab) */
   .tabrecs{display:flex;flex-direction:column;gap:6px}
   .tabrec{display:grid;grid-template-columns:1.25fr 1.4fr 1.3fr auto;gap:8px 10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px}
@@ -633,6 +640,37 @@ function safePanel(fn,label){
   }
 }
 
+/* ---------- PLAYS LEDGER ----------
+   Carl 2026-09-02: "if you show it to me, it needs to be counted." The code pipeline stamps playsShownAt on a pick
+   the moment it qualifies for Today's Plays; from then on it is counted, bet or not, faded or not. Clean start Sep 2. */
+function ledgerPicks(){
+  var out=[];
+  if(!picksData||!picksData.cards)return out;
+  picksData.cards.forEach(function(cd){ if(!Array.isArray(cd.picks))return; cd.picks.forEach(function(p){ if(p.playsShownAt){p._cardId=p._cardId||cd.id;out.push(p)} }); });
+  return out;
+}
+function ledgerHTML2(){
+  var L=ledgerPicks();
+  if(!L.length)return '<section class="panel"><h2>Plays ledger <small>every pick that appeared under Today’s Plays · counted the moment it was shown</small></h2><p class="none-msg">Starts clean Sep 2 — the first pick to appear on Today’s Plays will show here.</p></section>';
+  L.sort(function(a,b){var da=gameDate(a),db=gameDate(b);return (db?db.getTime():0)-(da?da.getTime():0)});
+  var w=0,l=0,pu=0,pend=0; L.forEach(function(p){if(p.result==='win')w++;else if(p.result==='loss')l++;else if(p.result==='push')pu++;else pend++});
+  var rows=L.map(function(p){
+    var r=p.result&&p.result!=='pending'?p.result:'pending';
+    var st=startOf(p), when=gameISO(p)||'';
+    var tm=st?ptTime(new Date(st).getTime())+' PT':'';
+    var flags=[];
+    if(p.liveCheck&&!p.liveCheck.ok&&p.liveCheck.why==='faded')flags.push('faded before start');
+    if(p.liveCheck&&!p.liveCheck.ok&&p.liveCheck.why==='flipped')flags.push('public flipped');
+    if(p.status==='dead')flags.push('retired');
+    if(p.flag98)flags.push('* 98/2');
+    return '<div class="ledrow '+esc(r)+'"><span class="ldate">'+esc(when)+(tm?' · '+esc(tm):'')+'</span>'
+      +'<span class="lpick"><b>'+esc(p.pick)+'</b> <span class="faint">'+esc(String(p.game||'').replace(/\s*—.*$/,''))+'</span>'+(flags.length?' <span class="lflag">'+esc(flags.join(' · '))+'</span>':'')+'</span>'
+      +'<span class="lres '+esc(r)+'">'+(r==='win'?'W':r==='loss'?'L':r==='push'?'P':'·')+'</span></div>';
+  }).join('');
+  return '<section class="panel"><h2>Plays ledger <small>every pick that appeared under Today’s Plays since Sep 2 · counted the moment it was shown, bet or not</small></h2>'
+    +'<p class="sysrec"><b>'+w+'–'+l+(pu?'–'+pu:'')+'</b> '+(w+l?'('+netUnits(w,l)+' at −110)':'')+(pend?' · '+pend+' pending':'')+'</p><div class="ledger">'+rows+'</div></section>';
+}
+
 /* ---------- per-tab records (Carl 2026-09-02: "the record tab should include the different tabs' win and loss streaks") ----------
    One row per pill on the card. Same bucketing the pills use; graded picks only, pushes shown but kept out of the streak. */
 function tabRecordsHTML(){
@@ -641,7 +679,7 @@ function tabRecordsHTML(){
   var ANGLE={'wcoast-angle':1,'roaddog-angle':1,'homedog-angle':1,'auto-alerts':1};
   function sportTag(p){var m=String(p.game||'').match(/\((NFL|WNBA|NBA|CFB|CBB|MLB|NHL)\)/i);return m?m[1].toUpperCase():''}
   var TABS=[
-    ['Plays',function(p,id){return !PAPER[id]&&!ANGLE[id]&&(p.featured||p.status==='play'||p.stack)}],
+    ['Plays (ledger)',function(p,id){return !!p.playsShownAt}],
     ['Patrick’s Variables',function(p,id){return id==='patrick-variables'&&p.kind!=='injury'}],
     ['R&amp;D',function(p,id){return id==='rnd-fade'}],
     ['NHL',function(p,id){return !PAPER[id]&&sportTag(p)==='NHL'}],
@@ -711,15 +749,12 @@ function streakHTML(){
     +(function(){
       /* SEASON record of play-tier picks — same bucket as the Plays pill (no paper/angle cards, no dead picks) */
       var fw=0,fl=0,tw=0,tl=0,tp=0,tISO=ptISO();
-      var SKIP={'patrick-variables':1,'rnd-fade':1,'ufc-card':1,'auto-alerts':1,'wcoast-angle':1};
-      if(picksData&&picksData.cards)picksData.cards.forEach(function(c){if(SKIP[c.id]||!Array.isArray(c.picks))return;c.picks.forEach(function(p){
-        if(!(p.featured||p.status==='play'||p.stack)||p.status==='dead')return;
+      ledgerPicks().forEach(function(p){
         var today=(gameISO(p)===tISO);
         if(p.result==='win'){fw++;if(today)tw++}else if(p.result==='loss'){fl++;if(today)tl++}else if(today&&(!p.result||p.result==='pending'))tp++;
-      })});
-      if(!(fw+fl))return '';
-      return '<div class="tile"><span class="label">Plays — today</span><span class="big '+netUnitsCls(tw,tl)+'">'+tw+'–'+tl+'</span><span class="sub">'+(tp?tp+' still to play':'play-tier picks dated today')+'</span></div>'
-        +'<div class="tile"><span class="label">Plays — season</span><span class="big '+netUnitsCls(fw,fl)+'">'+fw+'–'+fl+'</span><span class="sub">'+netUnits(fw,fl)+' since Aug 24 · also inside the all-picks total</span></div>';
+      });
+      return '<div class="tile"><span class="label">Plays — today</span><span class="big '+netUnitsCls(tw,tl)+'">'+tw+'–'+tl+'</span><span class="sub">'+(tp?tp+' still to play':'from the plays ledger')+'</span></div>'
+        +'<div class="tile"><span class="label">Plays ledger</span><span class="big '+netUnitsCls(fw,fl)+'">'+fw+'–'+fl+'</span><span class="sub">'+netUnits(fw,fl)+' · every pick shown on Today’s Plays since Sep 2</span></div>';
     })()
     +'</div><div class="dots">'+dots+'</div></section>';
 }
@@ -937,7 +972,7 @@ function render(){
   function isTop(p){
     if(p._cardId==='patrick-variables'||p._cardId==='rnd-fade'||p._cardId==='ufc-card'||p._cardId==='auto-alerts'||p._cardId==='wcoast-angle')return false; /* experimental / R&D / UFC / alerts / deleted angle never surface on the front page */
     if(p.status==='dead'||p.status==='logged'||p.status==='alert')return false; /* retired, already bet, or a DO-NOT-BET alert — even if stacked */
-    if(!((p.status==='play'||p.stack)&&(!p.result||p.result==='pending')))return false;
+    if(!((p.status==='play'||p.stack||p.playsShownAt)&&(!p.result||p.result==='pending')))return false;
     var d=gameDate(p);
     if(d){
       var gISO=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -961,27 +996,19 @@ function render(){
   if(cardSub==='plays'){
   h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Today’s plays <small>highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)</small></h2>';
   h+= topPicks.length ? topPicks.map(pickRow).join('') : '<p class="none-msg">No live plays on the board — new qualifiers post the moment a snapshot finds them.</p>';
+  /* PLAYS LEDGER (Carl 2026-09-02): the record counts ONLY picks the code stamped as shown on Today's Plays.
+     Shown = counted, bet or not, faded or not. Clean start Sep 2, 2026. */
   var fRec={w:0,l:0};
-  allCards.forEach(function(cd){
-    if(cd.id==='patrick-variables'||cd.id==='rnd-fade')return; /* paper experiments keep their own records */
-    cd.picks.forEach(function(p){
-    if(!isFeatured(p))return;
-    if(p.result==='win')fRec.w++; else if(p.result==='loss')fRec.l++;
-  })});
+  ledgerPicks().forEach(function(p){ if(p.result==='win')fRec.w++; else if(p.result==='loss')fRec.l++; });
   /* today's plays only (Pacific date) vs the season-to-date plays record — two different numbers */
   var tRec={w:0,l:0,pend:0}, tISO=ptISO();
-  allCards.forEach(function(cd){
-    if(cd.id==='patrick-variables'||cd.id==='rnd-fade'||cd.id==='ufc-card'||cd.id==='auto-alerts'||cd.id==='wcoast-angle')return;
-    cd.picks.forEach(function(p){
-      if(!isFeatured(p)||p.status==='dead')return;
-      if(gameISO(p)!==tISO)return;
-      if(p.result==='win')tRec.w++; else if(p.result==='loss')tRec.l++; else if(!p.result||p.result==='pending')tRec.pend++;
-    })});
-  if(fRec.w+fRec.l>0||tRec.w+tRec.l+tRec.pend>0){
-    h+='<p class="sysrec" style="margin:12px 0 0">'
-      +'Today’s plays: <b>'+tRec.w+'–'+tRec.l+'</b>'+(tRec.pend?' <span class="faint">('+tRec.pend+' still to play)</span>':'')
-      +' &nbsp;·&nbsp; Season plays record since Aug 24: <b>'+fRec.w+'–'+fRec.l+'</b> ('+netUnits(fRec.w,fRec.l)+' at −110) — every play-tier pick, bet or not; also counted inside the overall system record.</p>';
-  }
+  ledgerPicks().forEach(function(p){
+    if(gameISO(p)!==tISO)return;
+    if(p.result==='win')tRec.w++; else if(p.result==='loss')tRec.l++; else if(!p.result||p.result==='pending')tRec.pend++;
+  });
+  h+='<p class="sysrec" style="margin:12px 0 0">'
+    +'Today’s plays: <b>'+tRec.w+'–'+tRec.l+'</b>'+(tRec.pend?' <span class="faint">('+tRec.pend+' still to play)</span>':'')
+    +' &nbsp;·&nbsp; Plays ledger since Sep 2: <b>'+fRec.w+'–'+fRec.l+'</b> ('+netUnits(fRec.w,fRec.l)+' at −110) — every pick that appeared here counts, bet or not. Full list on the Record tab.</p>';
   h+='</section>';
   }
 
@@ -1170,6 +1197,7 @@ function render(){
 
   if(activeTab==='rec'){
   h+=safePanel(streakHTML,'Streak & trend');
+  h+=safePanel(ledgerHTML2,'Plays ledger');
   h+=safePanel(tabRecordsHTML,'Record by tab');
   /* shadow ledger */
   h+='<section class="panel"><h2>Shadow ledger <small>every tracked game graded against angles we aren’t betting · flags at n≥20 and ≥55% (or ≤45%)</small></h2>'+safePanel(ledgerHTML,'Shadow ledger')+'</section>';
