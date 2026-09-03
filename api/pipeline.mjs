@@ -299,6 +299,9 @@ export default async function handler(req, res) {
           if (lp.result && lp.result !== 'pending') continue;
           const g = parseLiveGame(lp.game, startedAt);
           if (!g?.date || g.date < todayPT) continue;
+          // front-page window (same as the dashboard): plays up to 7 days out; Unders surface immediately
+          const daysOut = (new Date(g.date + 'T12:00:00-07:00') - startedAt) / 86400e3;
+          if (daysOut > 7 && !/^\s*under/i.test(String(lp.pick))) continue;
           const st = lp.start ? new Date(lp.start) : null;
           if (st && st <= startedAt) continue; // never shown pre-game on this run
           lp.playsShownAt = ts; report.playsStamped++; changed = true;
