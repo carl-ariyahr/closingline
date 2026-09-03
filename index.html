@@ -709,13 +709,17 @@ function streakHTML(){
     +'<div class="tile"><span class="label">All picks</span><span class="big">'+w+'–'+(seq.length-w)+'</span><span class="sub">'+((w/seq.length)*100).toFixed(0)+'% · <span class="'+netUnitsCls(w,seq.length-w)+'">'+netUnits(w,seq.length-w)+'</span> at −110 flat</span></div>'
     +'<div class="tile"><span class="label">Last 10</span><span class="big">'+w10+'–'+(last10.length-w10)+'</span><span class="sub">recent form</span></div>'
     +(function(){
-      var fw=0,fl=0;
-      if(picksData&&picksData.cards)picksData.cards.forEach(function(c){c.picks.forEach(function(p){
-        if(!(p.featured||p.status==='play'||p.stack))return;
-        if(p.result==='win')fw++;else if(p.result==='loss')fl++;
+      /* SEASON record of play-tier picks — same bucket as the Plays pill (no paper/angle cards, no dead picks) */
+      var fw=0,fl=0,tw=0,tl=0,tp=0,tISO=ptISO();
+      var SKIP={'patrick-variables':1,'rnd-fade':1,'ufc-card':1,'auto-alerts':1,'wcoast-angle':1};
+      if(picksData&&picksData.cards)picksData.cards.forEach(function(c){if(SKIP[c.id]||!Array.isArray(c.picks))return;c.picks.forEach(function(p){
+        if(!(p.featured||p.status==='play'||p.stack)||p.status==='dead')return;
+        var today=(gameISO(p)===tISO);
+        if(p.result==='win'){fw++;if(today)tw++}else if(p.result==='loss'){fl++;if(today)tl++}else if(today&&(!p.result||p.result==='pending'))tp++;
       })});
       if(!(fw+fl))return '';
-      return '<div class="tile"><span class="label">Today’s-plays tier</span><span class="big '+netUnitsCls(fw,fl)+'">'+fw+'–'+fl+'</span><span class="sub">'+netUnits(fw,fl)+' · also inside the all-picks total</span></div>';
+      return '<div class="tile"><span class="label">Plays — today</span><span class="big '+netUnitsCls(tw,tl)+'">'+tw+'–'+tl+'</span><span class="sub">'+(tp?tp+' still to play':'play-tier picks dated today')+'</span></div>'
+        +'<div class="tile"><span class="label">Plays — season</span><span class="big '+netUnitsCls(fw,fl)+'">'+fw+'–'+fl+'</span><span class="sub">'+netUnits(fw,fl)+' since Aug 24 · also inside the all-picks total</span></div>';
     })()
     +'</div><div class="dots">'+dots+'</div></section>';
 }
