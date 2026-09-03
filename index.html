@@ -964,8 +964,19 @@ function render(){
     if(!isFeatured(p))return;
     if(p.result==='win')fRec.w++; else if(p.result==='loss')fRec.l++;
   })});
-  if(fRec.w+fRec.l>0){
-    h+='<p class="sysrec" style="margin:12px 0 0">Plays record: <b>'+fRec.w+'–'+fRec.l+'</b> ('+netUnits(fRec.w,fRec.l)+' at −110) — also counted inside the overall system record below.</p>';
+  /* today's plays only (Pacific date) vs the season-to-date plays record — two different numbers */
+  var tRec={w:0,l:0,pend:0}, tISO=ptISO();
+  allCards.forEach(function(cd){
+    if(cd.id==='patrick-variables'||cd.id==='rnd-fade'||cd.id==='ufc-card'||cd.id==='auto-alerts'||cd.id==='wcoast-angle')return;
+    cd.picks.forEach(function(p){
+      if(!isFeatured(p)||p.status==='dead')return;
+      if(gameISO(p)!==tISO)return;
+      if(p.result==='win')tRec.w++; else if(p.result==='loss')tRec.l++; else if(!p.result||p.result==='pending')tRec.pend++;
+    })});
+  if(fRec.w+fRec.l>0||tRec.w+tRec.l+tRec.pend>0){
+    h+='<p class="sysrec" style="margin:12px 0 0">'
+      +'Today’s plays: <b>'+tRec.w+'–'+tRec.l+'</b>'+(tRec.pend?' <span class="faint">('+tRec.pend+' still to play)</span>':'')
+      +' &nbsp;·&nbsp; Season plays record since Aug 24: <b>'+fRec.w+'–'+fRec.l+'</b> ('+netUnits(fRec.w,fRec.l)+' at −110) — every play-tier pick, bet or not; also counted inside the overall system record.</p>';
   }
   h+='</section>';
   }
