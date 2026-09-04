@@ -66,15 +66,14 @@ test('spread >= 20 downgrades to watch', () => {
   assert.equal(r.tier, 'watch');
 });
 
-test('windows: football 7 days, others 96h (Carl 2026-09-02, was 72h)', () => {
-  const now = new Date('2026-09-02T12:00:00-07:00');
+test('windows: every sport 7 days from game day (Carl 2026-09-04; was football 7d / others 96h)', () => {
+  const now = new Date('2026-09-02T20:00:00Z');
   assert.equal(withinWindow('NFL', '2026-09-08', now), true);   // 6 days out
   assert.equal(withinWindow('NFL', '2026-09-10', now), false);  // 8 days out
-  assert.equal(withinWindow('MLB', '2026-09-04', now), true);   // 36h
-  assert.equal(withinWindow('MLB', '2026-09-06', now), true);   // 84h — inside 96h
-  assert.equal(withinWindow('MLB', '2026-09-07', now), false);  // 108h
+  assert.equal(withinWindow('MLB', '2026-09-04', now), true);
+  assert.equal(withinWindow('MLB', '2026-09-08', now), true);   // 6 days out — now inside for every sport
+  assert.equal(withinWindow('NHL', '2026-09-10', now), false);  // 8 days out
 });
-
 test('MLB/NHL use moneyline; DET/MIN Sep-1 replay produces Under 8.5 play', () => {
   // exact live-board numbers from 2026-09-01: Over 65% bets / 14% handle
   const game = {

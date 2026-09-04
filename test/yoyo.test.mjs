@@ -18,6 +18,13 @@ test('recordLines stores change points only; detectYoYo = any move back toward t
   assert.equal(detectYoYo([['a', -3], ['b', -6], ['c', -7]]), null); // kept moving away — no yo-yo
   assert.equal(detectYoYo([['a', -3], ['b', -1], ['c', 1]]), null);  // moving away through zero is still away
   assert.deepEqual(detectYoYo([['a', -3], ['b', -1], ['c', -2]]).path, [-3, -1, -2]); // back toward -3
+  // moneyline prices are tracked in every sport (Carl: "all lines")
+  const m = {};
+  const ml = (p, extra = {}) => ({ gamecode: '20260905MLB00002', sport: 'MLB', date: '2026-09-05', away: 'Athletics', home: 'Seattle Mariners', spread: { line_home: -1.5 }, total: { line: 7.5 }, ml: { away_price: p, home_price: -p - 30 }, ...extra });
+  recordLines(m, [ml(150)], 't1'); recordLines(m, [ml(170)], 't2'); recordLines(m, [ml(160)], 't3');
+  const y = detectYoYo(m['20260905MLB00002'].Moneyline); assert.deepEqual(y.path, [150, 170, 160]);
+  const card = { picks: [] }; upsertYoYoPicks(card, m, new Date('2026-09-04T20:00:00Z'), { todayPT: '2026-09-04' });
+  assert.match(card.picks[0].pick, /Athletics ML \+150 → \+170 → \+160/);
 });
 
 test('yo-yo entries land on the Patrick card as flag-only alerts, pre-game only, idempotent', () => {
