@@ -12,13 +12,13 @@ import { loadContention } from '../lib/contention.mjs';
 import { AN_LEAGUE, fetchActionHTML, parseActionSplits } from '../lib/actionnetwork.mjs';
 import { sameTeam, matchPair, stripPickSuffix, nick } from '../lib/names.mjs';
 import { matchLiveGame, liveCheck, applyLiveCheck, parseLiveGame, liveGradePick } from '../lib/liveconfirm.mjs';
+import { continuityDecide } from '../lib/continuity.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
 const PICKS_BLOB = 'closing-line-shadow-picks.json';
 const EXT_BLOB = 'closing-line-external-splits.json'; // Action Network (code-pulled) + any session-fed rows
 
-const CONTINUITY_MAX_SWING = 20; // tickets are cumulative; a bigger hourly swing = misread
 const SPLIT_NEUTRAL_MARGIN = 6;  // Action a/b within this many points => "split", not confirmation either way
 const MAX_CHECKS = 48;           // confirmation history kept per pick
 
@@ -135,17 +135,9 @@ export default async function handler(req, res) {
         if (!usable) { report.flags.push({ gamecode: g.gamecode, game: `${g.away} @ ${g.home}`, issues: issues.length ? issues : ['no usable market'] }); continue; }
         if (issues.length) { scrubbed++; g.scrubbed = issues; }
         if (absent.length) g.absent = absent;
-        const prev = lastGood[g.gamecode];
-        if (prev) {
-          const pairs = [
-            [prev.spread?.away?.bets, g.spread.away.bets], [prev.total?.over?.bets, g.total.over.bets], [prev.ml?.away?.bets, g.ml.away.bets],
-          ];
-          if (pairs.some(([a, b]) => a != null && b != null && Math.abs(a - b) > CONTINUITY_MAX_SWING)) {
-            report.flags.push({ gamecode: g.gamecode, game: `${g.away} @ ${g.home}`, issues: [`continuity: bets% swing >${CONTINUITY_MAX_SWING} vs last good read — excluded, last good read carried forward`] });
-            kept.push({ ...prev, carried: true, carriedAt: ts }); // keep a reference so the guard still has a baseline next run
-            continue;
-          }
-        }
+        const d = continuityDecide(lastGood[g.gamecode], g, ts);
+        if (d.why) report.flags.push({ gamecode: g.gamecode, game: `${g.away} @ ${g.home}`, issues: [d.why] });
+        if (!d.accept) { kept.push(d.carry); continue; } // keep a reference so the guard still has a baseline next run
         kept.push(g);
       }
       report.sports[sport] = { parsed: games.length, kept: kept.length, scrubbed };

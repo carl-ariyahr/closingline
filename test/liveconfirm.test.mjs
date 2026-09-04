@@ -44,6 +44,16 @@ test('college board names: "ST" and shared mascots never match the wrong game', 
   assert.equal(matchLiveGame(cfb, { type: 'Total', pick: 'Over 50', game: 'Murray ST @ Kansas ST Wildcats — Sep 5 (CFB)' }), null);
 });
 
+test('"BOS Red Sox" / "CWS White Sox" labels match the right VSiN game (nickname "Sox" is shared)', () => {
+  const mk = (code, away, home) => ({ gamecode: code, sport: 'MLB', date: '2026-09-04', away, home,
+    spread: { away: {}, home: {} }, total: { line: 8.5, over: { handle: 10, bets: 75 }, under: { handle: 90, bets: 25 } }, ml: { away: { handle: 100, bets: 79 }, home: { handle: 0, bets: 21 } } });
+  const g = [mk('20260904MLB00005', 'Boston Red Sox', 'Baltimore Orioles'), mk('20260904MLB00008', 'Minnesota Twins', 'Chicago White Sox')];
+  assert.equal(matchLiveGame(g, { type: 'Total', pick: 'Under 8.5', game: 'BOS Red Sox @ BAL Orioles — Sep 4 (MLB)' })?.gamecode, '20260904MLB00005');
+  assert.equal(matchLiveGame(g, { type: 'Total', pick: 'Over 9', game: 'MIN Twins @ CWS White Sox — Sep 4 (MLB)' })?.gamecode, '20260904MLB00008');
+  assert.equal(liveSide({ type: 'Moneyline', pick: 'Baltimore Orioles ML' }, g[0]), 'home');
+  assert.equal(liveSide({ type: 'Moneyline', pick: 'BOS Red Sox ML' }, g[0]), 'away');
+});
+
 test('liveSide: team picks resolve to away/home, totals to over/under', () => {
   const g = GAMES[0];
   assert.equal(liveSide({ type: 'Moneyline', pick: 'STL Cardinals ML +203' }, g), 'away');

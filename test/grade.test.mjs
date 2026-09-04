@@ -66,3 +66,14 @@ test('evalGame emits explicit side + pickTeam, and grading round-trips from it',
   assert.equal(gradeAgainst(ev('Athletics', 'Texas Rangers', 5, 2), ml), 'win');
   assert.equal(gradeAgainst(ev('Athletics', 'Texas Rangers', 5, 2), tot), 'win');
 });
+
+test('live-card "BOS Red Sox" grades against ESPN Boston Red Sox, never the White Sox', () => {
+  const events = [
+    { completed: true, away: 'Boston Red Sox', awayLoc: 'Boston', home: 'Baltimore Orioles', homeLoc: 'Baltimore', awayScore: 2, homeScore: 5, awayQ: [], homeQ: [], date: '2026-09-04T23:05Z' },
+    { completed: true, away: 'Minnesota Twins', awayLoc: 'Minnesota', home: 'Chicago White Sox', homeLoc: 'Chicago', awayScore: 6, homeScore: 4, awayQ: [], homeQ: [], date: '2026-09-04T23:40Z' },
+  ];
+  const p = { type: 'Moneyline', pick: 'Baltimore Orioles ML', sport: 'MLB', date: '2026-09-04', away: 'BOS Red Sox', home: 'BAL Orioles', side: 'home' };
+  assert.equal(gradeAgainst(matchGame(events, p), p), 'win');
+  const t = { type: 'Total', pick: 'Over 9', sport: 'MLB', date: '2026-09-04', away: 'MIN Twins', home: 'CWS White Sox', side: 'over', total: 9 };
+  assert.equal(gradeAgainst(matchGame(events, t), t), 'win');
+});
