@@ -22,7 +22,7 @@ const shadow = await rb('closing-line-shadow-picks.json');
 const now = new Date();
 let n = 0, agree = 0; const diff = [], unverified = [], pending = [];
 for (const c of live.cards) {
-  if (!/^slate-/.test(c.id)) continue;
+  if (!/^(slate|code)-/.test(c.id)) continue;
   for (const lp of c.picks || []) {
     if (lp.kind && lp.kind !== 'fade') continue;
     if (lp.status === 'dead') continue;
@@ -32,7 +32,9 @@ for (const c of live.cards) {
     const graded = lp.result && lp.result !== 'pending';
     const shown = !!lp.playsShownAt;
     if (!graded && !(shown || lp.status === 'play')) continue; // ungraded non-plays are not in scope
-    const gp = liveGradePick(lp, g);
+    const gp = lp.src === 'code' && lp.side
+      ? { type: lp.type, pick: lp.pick, sport: lp.sport || g.sport, date: lp.date || g.date, away: lp.away || g.away, home: lp.home || g.home, side: lp.side, line: lp.line ?? null, total: lp.total ?? null, dhIndex: lp.dhIndex ?? null }
+      : liveGradePick(lp, g);
     const ev = await sb(g.sport, g.date);
     const m = ev && gp ? matchGame(ev, gp) : null;
     const res = m ? gradeAgainst(m, gp) : null;
