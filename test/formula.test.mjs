@@ -33,12 +33,11 @@ test('D between 8 and 15 is watch; 15-25 lean; >=25 play', () => {
   assert.equal(p.tier, 'play');
 });
 
-test('college always downgrades to watch (the Tulsa case: D=26 stays watch)', () => {
-  const r = evalMarket('CFB', { a: { name: 'Oklahoma ST -13.5', bets: 70, handle: 44 }, b: { name: 'Tulsa +13.5', bets: 30, handle: 56 } });
-  assert.equal(r.tier, 'watch');
-  assert.ok(r.downgraded.includes('college'));
+test('college is fair game (Carl 2026-09-04): tier from D like every other sport', () => {
+  const r = evalMarket('CFB', { a: { name: 'Oklahoma ST Cowboys', bets: 74, handle: 48, line: '-13.5' }, b: { name: 'Tulsa Golden Hurricane', bets: 26, handle: 52, line: '+13.5' }, spreadMagnitude: 13.5 });
+  assert.equal(r.tier, 'play');
+  assert.ok(!r.downgraded.includes('college'));
 });
-
 test('98/2 read keeps its tier but is flagged (Carl 2026-09-02: post it with an asterisk)', () => {
   const r = evalMarket('MLB', {
     a: { name: 'Over 8.5', bets: 65, handle: 2 },
