@@ -92,3 +92,14 @@ test('fetchScoreboard skips a shell ESPN event with no competitions instead of t
     assert.equal(ev.length, 1); assert.equal(ev[0].away, 'Tarleton State Texans');
   } finally { globalThis.fetch = realFetch; }
 });
+
+test('a pick whose game string has home/away backwards still grades OUR team (Royals were home, card said KC @ MIA)', () => {
+  const events = [{ completed: true, away: 'Miami Marlins', awayLoc: 'Miami', home: 'Kansas City Royals', homeLoc: 'Kansas City', awayScore: 3, homeScore: 7, awayQ: [], homeQ: [], date: '2026-09-03T23:40Z' }];
+  const p = { type: 'Moneyline', pick: 'Kansas City Royals ML +102', sport: 'MLB', date: '2026-09-03', away: 'KC Royals', home: 'MIA Marlins', side: 'away' };
+  assert.equal(gradeAgainst(matchGame(events, p), p), 'win');
+  const sp = { type: 'Spread', pick: 'MIA Marlins +1.5', sport: 'MLB', date: '2026-09-03', away: 'KC Royals', home: 'MIA Marlins', side: 'home', line: '+1.5' };
+  assert.equal(gradeAgainst(matchGame(events, sp), sp), 'loss'); // Marlins lost by 4
+  const ny = { completed: true, away: 'New York Yankees', awayLoc: 'New York', home: 'New York Mets', homeLoc: 'New York', awayScore: 2, homeScore: 5, awayQ: [], homeQ: [], date: '2026-09-03T23:40Z' };
+  const bad = { type: 'Moneyline', pick: 'New York ML', sport: 'MLB', date: '2026-09-03', away: 'New York', home: 'New York Mets', side: 'away' };
+  assert.equal(gradeAgainst(ny, bad), null); // "New York" fits both sides → never guess
+});
