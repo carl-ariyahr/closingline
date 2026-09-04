@@ -11,7 +11,7 @@ import { gradePicks, fetchScoreboard, matchGame, gradeAgainst } from '../lib/gra
 import { loadContention } from '../lib/contention.mjs';
 import { AN_LEAGUE, fetchActionHTML, parseActionSplits } from '../lib/actionnetwork.mjs';
 import { sameTeam, matchPair, stripPickSuffix, nick } from '../lib/names.mjs';
-import { matchLiveGame, liveCheck, applyLiveCheck, parseLiveGame, liveGradePick } from '../lib/liveconfirm.mjs';
+import { matchLiveGame, liveCheck, applyLiveCheck, applyContention, parseLiveGame, liveGradePick } from '../lib/liveconfirm.mjs';
 import { continuityDecide } from '../lib/continuity.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
@@ -246,6 +246,20 @@ export default async function handler(req, res) {
     for (const k of Object.keys(freshByCode)) if (freshByCode[k].started || freshByCode[k].excluded) delete freshByCode[k];
   }
 
+  const contention = {};
+  async function contentionNote(sport, away, home) {
+    if (!(sport in contention)) {
+      try { contention[sport] = await loadContention(sport); }
+      catch (e) { contention[sport] = null; report.errors.push(`standings ${sport}: ${e.message || e}`); }
+    }
+    const c = contention[sport];
+    if (!c) return null;
+    const a = c.forTeam(away), h = c.forTeam(home);
+    const outs = [];
+    if (a?.out) outs.push(`${away} (${a.why})`);
+    if (h?.out) outs.push(`${home} (${h.why})`);
+    return outs.length ? `⚾ CONTENTION: ${outs.join(' & ')} out of the playoff race — late-season lineups make public signals less reliable` : null;
+  }
   // ---- 2b. LIVE CARD re-confirmation — code, every run, until the game starts (Carl 2026-09-02) ----
   // Re-reads every open fade pick on Carl's live slate cards against this run's VSiN parse and stamps
   // ONE replaceable tag + a structured liveCheck. Never adds, removes, or re-tiers a live pick.
@@ -271,6 +285,8 @@ export default async function handler(req, res) {
           const g = matchLiveGame(freshGames, lp); // freshGames is pre-game only (step 2a)
           if (!g) { report.liveConfirm.notOnBoard++; continue; } // started / off the board — leave it alone
           if (g.start && lp.start !== g.start) { lp.start = g.start; changed = true; } // show the kickoff on the card
+          // playoff-contention flag in CODE (Carl 2026-09-04: the AI card missed it on 6 of 11 plays) — one replaceable tag
+          if (applyContention(lp, await contentionNote(g.sport, g.away, g.home))) { report.liveConfirm.contention = (report.liveConfirm.contention || 0) + 1; changed = true; }
           const chk = liveCheck(lp, g, startedAt);
           report.liveConfirm.checked++;
           report.liveConfirm[chk.ok ? 'ok' : chk.why] = (report.liveConfirm[chk.ok ? 'ok' : chk.why] || 0) + 1;
@@ -347,20 +363,6 @@ export default async function handler(req, res) {
       } catch (e) { sharpBoards[sport] = null; report.oddsApi.sports[sport] = `error: ${e.message || e}`; }
     }
     return sharpBoards[sport];
-  }
-  const contention = {};
-  async function contentionNote(sport, away, home) {
-    if (!(sport in contention)) {
-      try { contention[sport] = await loadContention(sport); }
-      catch (e) { contention[sport] = null; report.errors.push(`standings ${sport}: ${e.message || e}`); }
-    }
-    const c = contention[sport];
-    if (!c) return null;
-    const a = c.forTeam(away), h = c.forTeam(home);
-    const outs = [];
-    if (a?.out) outs.push(`${away} (${a.why})`);
-    if (h?.out) outs.push(`${home} (${h.why})`);
-    return outs.length ? `⚾ CONTENTION: ${outs.join(' & ')} out of the playoff race — late-season lineups make public signals less reliable` : null;
   }
   function sharpNoteFor(p, info) {
     if (!info) return '';

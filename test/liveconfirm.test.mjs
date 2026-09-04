@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLiveGame, matchLiveGame, liveSide, liveCheck, applyLiveCheck, liveGradePick } from '../lib/liveconfirm.mjs';
+import { parseLiveGame, matchLiveGame, liveSide, liveCheck, applyLiveCheck, applyContention, liveGradePick } from '../lib/liveconfirm.mjs';
 import { matchGame, gradeAgainst } from '../lib/grade.mjs';
 
 const NOW = new Date('2026-09-02T20:20:00Z');
@@ -104,4 +104,19 @@ test('live-card picks grade in code from their own text + ESPN finals (pro ABBR 
   const sp = liveGradePick({ type: 'Spread', pick: 'Murray ST +20.5', game: 'Murray ST @ Middle Tenn ST Blue Raiders — Sep 5 (CFB)' }, { away: 'Murray ST', home: 'Middle Tenn ST Blue Raiders', date: '2026-09-05', sport: 'CFB' });
   assert.deepEqual([sp.side, sp.line], ['away', '+20.5']);
   assert.equal(liveGradePick({ type: 'Moneyline', pick: 'Somebody Else ML', game: 'SF Giants @ PIT Pirates — Sep 3 (MLB)' }, g), null); // never guess a side
+});
+
+test('applyContention keeps exactly one contention tag, replaces the AI wording, and clears when gone', () => {
+  const lp = { pick: 'Under 9.5', signal: 'PUBLIC 66% of tickets on Over 9.5 but only 44% of the money · ⚾ CONTENTION: KC out of the race — call-ups · ✓ code re-confirmed 3× on the live board (last 7:14am)' };
+  const note = '⚾ CONTENTION: Kansas City Royals (playoff odds 0.0%) out of the playoff race — late-season lineups make public signals less reliable';
+  assert.equal(applyContention(lp, note), true);
+  assert.equal((lp.signal.match(/⚾ CONTENTION/g) || []).length, 1);
+  assert.match(lp.signal, /Kansas City Royals \(playoff odds 0\.0%\)/);
+  assert.match(lp.signal, /✓ code re-confirmed 3×/); // other tags untouched
+  assert.equal(lp.contention, note);
+  assert.equal(applyContention(lp, note), false); // idempotent
+  applyLiveCheck(lp, { ts: NOW.toISOString(), ok: true, T: 66, H: 44, D: 22, tier: 'play' }, NOW);
+  assert.equal((lp.signal.match(/⚾ CONTENTION/g) || []).length, 1); // the confirm pass never duplicates or drops it
+  assert.equal(applyContention(lp, null), true);
+  assert.ok(!/CONTENTION/.test(lp.signal)); assert.equal(lp.contention, null);
 });
