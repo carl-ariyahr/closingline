@@ -141,6 +141,8 @@
   .cchip.lcbad{background:rgba(224,82,82,.14);color:#e05252;border-color:rgba(224,82,82,.5);font-weight:600}
   /* 98/2 read — posted at its tier, with an asterisk */
   .kbadge.flag98{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(233,169,74,.5)}
+.kbadge.codepick{background:#0f3d2e;color:#7ee2b8;border:1px solid #1f6b4f}
+.kbadge.ainote{background:#2a2a2a;color:#9a9a9a;border:1px solid #444}
   sup.ast{color:var(--amber);font-weight:700;font-size:.8em;margin-left:1px}
   h3.subhead{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
   /* game start time on a pick row */
@@ -787,7 +789,7 @@ function dayRecHTML(){
   for(var i=0;i<7;i++){week.push(ptISO(Date.now()-i*86400000))}
   var t={w:0,l:0,p:0}, wk={w:0,l:0,p:0};
   picksData.cards.forEach(function(cd){
-    var m=String(cd.id||'').match(/^slate-(\d{4}-\d{2}-\d{2})$/);
+    var m=String(cd.id||'').match(/^(?:slate|code)-(\d{4}-\d{2}-\d{2})$/);
     if(!m||!Array.isArray(cd.picks))return; /* a card without a picks array must never blank the app */
     cd.picks.forEach(function(pk){
       if(!pk.result||pk.result==='pending')return;
@@ -952,7 +954,8 @@ function render(){
         :L.why==='flipped'?'<span class="cchip lcbad" title="The public is now on OUR side — the formula would not take this any more">⛔ public flipped · '+esc(when)+'</span>'
         :L.why==='faded'?'<span class="cchip lcwarn" title="Same public side but below the 60/8 bar on the latest read">⚠ faded · '+esc(when)+'</span>':'';
     }
-    return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+'"><span class="kbadge '+kb+'">'+kl+'</span>'+stack+f98
+    var codeB=p.src==='code'?'<span class="kbadge codepick" title="Picked by the code pipeline from the VSiN board (tickets vs money), not by an AI">⚙ code</span>':(p.aiNote?'<span class="kbadge ainote" title="AI-written note — not a play since the Sep 4 cutover">AI note</span>':'');
+    return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+'"><span class="kbadge '+kb+'">'+kl+'</span>'+codeB+stack+f98
       +'<div class="pmain">'+sp+'<b>'+esc(p.pick)+(f98?'<sup class="ast">*</sup>':'')+'</b> · '+esc(gameTxt)+stTxt+pushNote+'<div class="psig">'+esc(p.signal||'')+'</div></div>'
       +res
       +lc
@@ -978,6 +981,7 @@ function render(){
   function isTop(p){
     if(p._cardId==='patrick-variables'||p._cardId==='rnd-fade'||p._cardId==='ufc-card'||p._cardId==='auto-alerts'||p._cardId==='wcoast-angle')return false; /* experimental / R&D / UFC / alerts / deleted angle never surface on the front page */
     if(p.status==='dead'||p.status==='logged'||p.status==='alert')return false; /* retired, already bet, or a DO-NOT-BET alert — even if stacked */
+    if(picksData&&picksData.playsSource==='code'&&p.src!=='code'&&!p.playsShownAt)return false; /* Carl 2026-09-04: Today's Plays come from the code pipeline; AI-written picks are notes unless already shown */
     if(!((p.status==='play'||p.stack||p.playsShownAt)&&(!p.result||p.result==='pending')))return false;
     var d=gameDate(p);
     if(d){
@@ -1000,7 +1004,7 @@ function render(){
   /* 1 — today's plays (soonest kickoff first, only games within 2 days) */
   function isFeatured(p){return p.featured||p.status==='play'||p.stack}
   if(cardSub==='plays'){
-  h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Today’s plays <small>highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)</small></h2>';
+  h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Today’s plays <small>highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)'+(picksData&&picksData.playsSource==='code'?' · picked by code since Sep 4':'')+'</small></h2>';
   h+= topPicks.length ? topPicks.map(pickRow).join('') : '<p class="none-msg">No live plays on the board — new qualifiers post the moment a snapshot finds them.</p>';
   /* plays from today's ledger that have finished stay on the front page with their result (Carl 2026-09-03) */
   var doneToday=sortByGame(ledgerPicks().filter(function(p){return gameISO(p)===ptISO()&&p.result&&p.result!=='pending'}));

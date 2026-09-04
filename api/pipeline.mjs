@@ -13,6 +13,7 @@ import { AN_LEAGUE, fetchActionHTML, parseActionSplits } from '../lib/actionnetw
 import { sameTeam, matchPair, stripPickSuffix, nick } from '../lib/names.mjs';
 import { matchLiveGame, liveCandidates, applyDHTag, liveCheck, applyLiveCheck, applyContention, parseLiveGame, liveGradePick } from '../lib/liveconfirm.mjs';
 import { continuityDecide } from '../lib/continuity.mjs';
+import { syncCodeCard } from '../lib/codecard.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
@@ -260,95 +261,6 @@ export default async function handler(req, res) {
     if (h?.out) outs.push(`${home} (${h.why})`);
     return outs.length ? `⚾ CONTENTION: ${outs.join(' & ')} out of the playoff race — late-season lineups make public signals less reliable` : null;
   }
-  // ---- 2b. LIVE CARD re-confirmation — code, every run, until the game starts (Carl 2026-09-02) ----
-  // Re-reads every open fade pick on Carl's live slate cards against this run's VSiN parse and stamps
-  // ONE replaceable tag + a structured liveCheck. Never adds, removes, or re-tiers a live pick.
-  report.liveConfirm = { checked: 0, ok: 0, faded: 0, flipped: 0, unmatched: 0, notOnBoard: 0, written: false };
-  try {
-    const live = await readBlob(LIVE_PICKS_BLOB, null);
-    if (live?.cards) {
-      let changed = false;
-      for (const c of live.cards) {
-        if (!/^slate-/.test(String(c.id)) || !Array.isArray(c.picks)) continue;
-        for (const lp of c.picks) {
-          if (lp.kind && lp.kind !== 'fade') continue;
-          if (lp.result && lp.result !== 'pending') continue;
-          if (lp.status === 'dead' || lp.status === 'logged') continue;
-          if (/\(CFB\)/.test(String(lp.game))) { // scope rule: at least one FBS team (Carl 2026-09-02)
-            const ex = matchLiveGame(Object.values(keptBySport).flat().filter(x => x.excluded === 'fcs-only'), lp);
-            if (ex) {
-              lp.status = 'dead';
-              lp.signal = `${String(lp.signal || '').replace(/\s*·\s*✖ retired[^·]*/g, '')} · ✖ retired — FCS-vs-FCS game (college picks need at least one FBS team, Carl 2026-09-02)`;
-              report.liveConfirm.fcsRetired = (report.liveConfirm.fcsRetired || 0) + 1; changed = true; continue;
-            }
-          }
-          const g = matchLiveGame(freshGames, lp); // freshGames is pre-game only (step 2a)
-          const dh = liveCandidates(freshGames, lp).length > 1; // doubleheader on the board
-          if (!g) {
-            if (dh) { report.liveConfirm.doubleheaderUnresolved = (report.liveConfirm.doubleheaderUnresolved || 0) + 1; if (applyDHTag(lp, true)) changed = true; }
-            report.liveConfirm.notOnBoard++; continue; // started / off the board — leave it alone
-          }
-          if (applyDHTag(lp, false)) changed = true;
-          if (dh && lp.dhIndex !== (g.dhIndex || 0)) { lp.dhIndex = g.dhIndex || 0; changed = true; } // pin the game so grading reads the right final
-          if (g.start && lp.start !== g.start) { lp.start = g.start; changed = true; } // show the kickoff on the card
-          // playoff-contention flag in CODE (Carl 2026-09-04: the AI card missed it on 6 of 11 plays) — one replaceable tag
-          if (applyContention(lp, await contentionNote(g.sport, g.away, g.home))) { report.liveConfirm.contention = (report.liveConfirm.contention || 0) + 1; changed = true; }
-          const chk = liveCheck(lp, g, startedAt);
-          report.liveConfirm.checked++;
-          report.liveConfirm[chk.ok ? 'ok' : chk.why] = (report.liveConfirm[chk.ok ? 'ok' : chk.why] || 0) + 1;
-          if (applyLiveCheck(lp, chk, startedAt)) changed = true;
-        }
-      }
-      // ---- PLAYS LEDGER stamp (Carl 2026-09-02: "if you show it to me, it needs to be counted") ----
-      // Same rule the front page uses for Today's Plays. Once stamped, a pick is counted in the plays
-      // record no matter what happens later (faded, retired, whatever). Clean start 2026-09-02.
-      const FRONT_SKIP = new Set(['patrick-variables', 'rnd-fade', 'ufc-card', 'auto-alerts', 'wcoast-angle']);
-      report.playsStamped = 0;
-      for (const c of live.cards) {
-        if (FRONT_SKIP.has(c.id) || !Array.isArray(c.picks)) continue;
-        for (const lp of c.picks) {
-          if (lp.playsShownAt) continue;
-          if (!(lp.status === 'play' || lp.stack)) continue;
-          if (lp.status === 'dead' || lp.status === 'logged' || lp.status === 'alert') continue;
-          if (lp.result && lp.result !== 'pending') continue;
-          const g = parseLiveGame(lp.game, startedAt);
-          if (!g?.date || g.date < todayPT) continue;
-          // front-page window (same as the dashboard): plays up to 7 days out; Unders surface immediately
-          const daysOut = (new Date(g.date + 'T12:00:00-07:00') - startedAt) / 86400e3;
-          if (daysOut > 7 && !/^\s*under/i.test(String(lp.pick))) continue;
-          const st = lp.start ? new Date(lp.start) : null;
-          if (st && st <= startedAt) continue; // never shown pre-game on this run
-          lp.playsShownAt = ts; report.playsStamped++; changed = true;
-        }
-      }
-      // ---- 2c. GRADE finished live picks in code, every run (Carl 2026-09-03: "make sure this updates as the day goes on") ----
-      // ESPN finals only; a pick whose side/number can't be read from its own text is left for the AI grader.
-      report.liveGraded = [];
-      const espnLive = {};
-      for (const c of live.cards) {
-        if (!Array.isArray(c.picks)) continue;
-        for (const lp of c.picks) {
-          if (lp.result && lp.result !== 'pending') continue;
-          if (lp.status === 'dead' || lp.kind === 'injury' || lp.kind === 'ufc') continue;
-          const g = parseLiveGame(lp.game, startedAt);
-          if (!g?.date || !g.sport || g.date > todayPT) continue;
-          if (lp.start && new Date(lp.start) > startedAt) continue;
-          const key = `${g.sport}|${g.date}`;
-          if (!(key in espnLive)) { try { espnLive[key] = await fetchScoreboard(g.sport, g.date.replace(/-/g, '')); } catch { espnLive[key] = null; } }
-          if (!espnLive[key]) continue;
-          const gp = liveGradePick(lp, g);
-          if (!gp) continue;
-          const result = gradeAgainst(matchGame(espnLive[key], gp), gp);
-          if (!result) continue;
-          lp.result = result; lp.gradedAt = ts; lp.gradedBy = 'code';
-          if (lp.status === 'play' || lp.stack) lp.featured = true;
-          report.liveGraded.push({ pick: lp.pick, game: lp.game, result });
-          changed = true;
-        }
-      }
-      if (changed) { live.rev = (live.rev || 0) + 1; await writeBlob(LIVE_PICKS_BLOB, live); report.liveConfirm.written = true; }
-    }
-  } catch (e) { report.errors.push(`live confirm: ${e.message || e}`); }
 
   // ---- 3. frozen formula: NEW picks ----
   const today = ptDateStr(startedAt);
@@ -464,7 +376,103 @@ export default async function handler(req, res) {
     }
   } catch (e) { report.errors.push(`grading: ${e.message || e}`); }
 
-  // ---- 6. write shadow docs ----
+  // ---- 7. LIVE CARD: mirror the code picks, re-confirm every open pick, stamp the plays ledger, grade finals ----
+  //         (runs after the shadow steps so the card reflects THIS run's picks; Carl 2026-09-02 / 2026-09-04)
+  // Re-reads every open fade pick on Carl's live slate cards against this run's VSiN parse and stamps
+  // ONE replaceable tag + a structured liveCheck. Never adds, removes, or re-tiers a live pick.
+  report.liveConfirm = { checked: 0, ok: 0, faded: 0, flipped: 0, unmatched: 0, notOnBoard: 0, written: false };
+  try {
+    const live = await readBlob(LIVE_PICKS_BLOB, null);
+    if (live?.cards) {
+      let changed = false;
+      // ---- CODE CARD (Carl 2026-09-04: "okay cut it over to code") — Today's Plays are the pipeline's picks ----
+      report.codeCard = syncCodeCard(live, picksDoc, ts);
+      if (report.codeCard.created || report.codeCard.updated || report.codeCard.retired || report.codeCard.aiDemoted || live.playsSource !== 'code') changed = true;
+      for (const c of live.cards) {
+        if (!/^(slate|code)-/.test(String(c.id)) || !Array.isArray(c.picks)) continue;
+        for (const lp of c.picks) {
+          if (lp.kind && lp.kind !== 'fade') continue;
+          if (lp.result && lp.result !== 'pending') continue;
+          if (lp.status === 'dead' || lp.status === 'logged') continue;
+          if (/\(CFB\)/.test(String(lp.game))) { // scope rule: at least one FBS team (Carl 2026-09-02)
+            const ex = matchLiveGame(Object.values(keptBySport).flat().filter(x => x.excluded === 'fcs-only'), lp);
+            if (ex) {
+              lp.status = 'dead';
+              lp.signal = `${String(lp.signal || '').replace(/\s*·\s*✖ retired[^·]*/g, '')} · ✖ retired — FCS-vs-FCS game (college picks need at least one FBS team, Carl 2026-09-02)`;
+              report.liveConfirm.fcsRetired = (report.liveConfirm.fcsRetired || 0) + 1; changed = true; continue;
+            }
+          }
+          const g = matchLiveGame(freshGames, lp); // freshGames is pre-game only (step 2a)
+          const dh = liveCandidates(freshGames, lp).length > 1; // doubleheader on the board
+          if (!g) {
+            if (dh) { report.liveConfirm.doubleheaderUnresolved = (report.liveConfirm.doubleheaderUnresolved || 0) + 1; if (applyDHTag(lp, true)) changed = true; }
+            report.liveConfirm.notOnBoard++; continue; // started / off the board — leave it alone
+          }
+          if (applyDHTag(lp, false)) changed = true;
+          if (dh && lp.dhIndex !== (g.dhIndex || 0)) { lp.dhIndex = g.dhIndex || 0; changed = true; } // pin the game so grading reads the right final
+          if (g.start && lp.start !== g.start) { lp.start = g.start; changed = true; } // show the kickoff on the card
+          // playoff-contention flag in CODE (Carl 2026-09-04: the AI card missed it on 6 of 11 plays) — one replaceable tag
+          if (applyContention(lp, await contentionNote(g.sport, g.away, g.home))) { report.liveConfirm.contention = (report.liveConfirm.contention || 0) + 1; changed = true; }
+          const chk = liveCheck(lp, g, startedAt);
+          report.liveConfirm.checked++;
+          report.liveConfirm[chk.ok ? 'ok' : chk.why] = (report.liveConfirm[chk.ok ? 'ok' : chk.why] || 0) + 1;
+          if (applyLiveCheck(lp, chk, startedAt)) changed = true;
+        }
+      }
+      // ---- PLAYS LEDGER stamp (Carl 2026-09-02: "if you show it to me, it needs to be counted") ----
+      // Same rule the front page uses for Today's Plays. Once stamped, a pick is counted in the plays
+      // record no matter what happens later (faded, retired, whatever). Clean start 2026-09-02.
+      const FRONT_SKIP = new Set(['patrick-variables', 'rnd-fade', 'ufc-card', 'auto-alerts', 'wcoast-angle']);
+      report.playsStamped = 0;
+      for (const c of live.cards) {
+        if (FRONT_SKIP.has(c.id) || !Array.isArray(c.picks)) continue;
+        for (const lp of c.picks) {
+          if (lp.playsShownAt) continue;
+          if (!(lp.status === 'play' || lp.stack)) continue;
+          if (lp.status === 'dead' || lp.status === 'logged' || lp.status === 'alert') continue;
+          if (lp.result && lp.result !== 'pending') continue;
+          const g = parseLiveGame(lp.game, startedAt);
+          if (!g?.date || g.date < todayPT) continue;
+          // front-page window (same as the dashboard): plays up to 7 days out; Unders surface immediately
+          const daysOut = (new Date(g.date + 'T12:00:00-07:00') - startedAt) / 86400e3;
+          if (daysOut > 7 && !/^\s*under/i.test(String(lp.pick))) continue;
+          const st = lp.start ? new Date(lp.start) : null;
+          if (st && st <= startedAt) continue; // never shown pre-game on this run
+          lp.playsShownAt = ts; report.playsStamped++; changed = true;
+        }
+      }
+      // ---- 2c. GRADE finished live picks in code, every run (Carl 2026-09-03: "make sure this updates as the day goes on") ----
+      // ESPN finals only; a pick whose side/number can't be read from its own text is left for the AI grader.
+      report.liveGraded = [];
+      const espnLive = {};
+      for (const c of live.cards) {
+        if (!Array.isArray(c.picks)) continue;
+        for (const lp of c.picks) {
+          if (lp.result && lp.result !== 'pending') continue;
+          if (lp.status === 'dead' || lp.kind === 'injury' || lp.kind === 'ufc') continue;
+          const g = parseLiveGame(lp.game, startedAt);
+          if (!g?.date || !g.sport || g.date > todayPT) continue;
+          if (lp.start && new Date(lp.start) > startedAt) continue;
+          const key = `${g.sport}|${g.date}`;
+          if (!(key in espnLive)) { try { espnLive[key] = await fetchScoreboard(g.sport, g.date.replace(/-/g, '')); } catch { espnLive[key] = null; } }
+          if (!espnLive[key]) continue;
+          const gp = lp.src === 'code' && lp.side
+            ? { type: lp.type, pick: lp.pick, sport: lp.sport || g.sport, date: lp.date || g.date, away: lp.away || g.away, home: lp.home || g.home, side: lp.side, line: lp.line ?? null, total: lp.total ?? null, dhIndex: lp.dhIndex ?? null }
+            : liveGradePick(lp, g); // AI-written picks: read the side/number from their own text
+          if (!gp) continue;
+          const result = gradeAgainst(matchGame(espnLive[key], gp), gp);
+          if (!result) continue;
+          lp.result = result; lp.gradedAt = ts; lp.gradedBy = 'code';
+          if (lp.status === 'play' || lp.stack) lp.featured = true;
+          report.liveGraded.push({ pick: lp.pick, game: lp.game, result });
+          changed = true;
+        }
+      }
+      if (changed) { live.rev = (live.rev || 0) + 1; await writeBlob(LIVE_PICKS_BLOB, live); report.liveConfirm.written = true; }
+    }
+  } catch (e) { report.errors.push(`live confirm: ${e.message || e}`); }
+
+  // ---- 8. write shadow docs ----
   for (const d of Object.keys(picksDoc.days)) if (new Date(d) < new Date(Date.now() - 14 * 24 * 3600e3)) delete picksDoc.days[d];
   picksDoc.rev = (picksDoc.rev || 0) + 1;
   picksDoc.lastRun = report;
