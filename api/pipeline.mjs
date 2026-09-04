@@ -14,11 +14,13 @@ import { sameTeam, matchPair, stripPickSuffix, nick } from '../lib/names.mjs';
 import { matchLiveGame, liveCandidates, applyDHTag, liveCheck, applyLiveCheck, applyContention, parseLiveGame, liveGradePick, noBetAtKickoff } from '../lib/liveconfirm.mjs';
 import { continuityDecide } from '../lib/continuity.mjs';
 import { syncCodeCard } from '../lib/codecard.mjs';
+import { recordLines, pruneHistory, upsertYoYoPicks, crossReference } from '../lib/yoyo.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
 const PICKS_BLOB = 'closing-line-shadow-picks.json';
 const EXT_BLOB = 'closing-line-external-splits.json'; // Action Network (code-pulled) + any session-fed rows
+const LINES_BLOB = 'closing-line-line-history.json'; // change points of every game's spread/total (yo-yo detection, Patrick's Variables)
 
 const SPLIT_NEUTRAL_MARGIN = 6;  // Action a/b within this many points => "split", not confirmation either way
 const MAX_CHECKS = 48;           // confirmation history kept per pick
@@ -105,11 +107,12 @@ export default async function handler(req, res) {
   const ts = startedAt.toISOString();
   const report = { ranAt: ts, sports: {}, newPicks: [], reconfirmed: 0, faded: 0, restored: 0, flags: [], errors: [] };
 
-  let snapDoc, picksDoc, extDoc;
+  let snapDoc, picksDoc, extDoc, linesDoc;
   try {
     snapDoc = await readBlob(SNAP_BLOB, { rev: 0, snapshots: [] });
     picksDoc = await readBlob(PICKS_BLOB, { rev: 0, days: {} });
     extDoc = await readBlob(EXT_BLOB, { rev: 0, rows: {} });
+    linesDoc = await readBlob(LINES_BLOB, { rev: 0, games: {} });
   } catch (e) {
     // abort WITHOUT writing anything — the next run will retry
     return res.status(503).json({ error: `blob read failed, run aborted (no writes): ${e.message}` });
@@ -239,6 +242,15 @@ export default async function handler(req, res) {
     const pre = kept.filter(g => !g.started);
     if (pre.length) snapDoc.snapshots.push({ ts, sport, games: pre });
   }
+  // ---- 2a'. LINE HISTORY (yo-yo detection for Patrick's Variables, Carl 2026-09-04) ----
+  // change points of every pre-game spread/total; first run backfills from the stored snapshots
+  if (!Object.keys(linesDoc.games).length) {
+    for (const s of snapDoc.snapshots.slice().sort((a, b) => a.ts.localeCompare(b.ts))) recordLines(linesDoc.games, s.games, s.ts);
+    report.lineHistoryBackfilled = Object.keys(linesDoc.games).length;
+  }
+  report.linePoints = recordLines(linesDoc.games, Object.values(keptBySport).flat().filter(g => !g.started), ts);
+  pruneHistory(linesDoc.games, ptDateStr(new Date(startedAt.getTime() - 2 * 86400e3)));
+  linesDoc.rev = (linesDoc.rev || 0) + 1;
   const excludedCodes = new Set();
   {
     const pre = freshGames.filter(g => !g.started && !g.excluded);
@@ -388,6 +400,15 @@ export default async function handler(req, res) {
       // ---- CODE CARD (Carl 2026-09-04: "okay cut it over to code") — Today's Plays are the pipeline's picks ----
       report.codeCard = syncCodeCard(live, picksDoc, ts);
       if (report.codeCard.created || report.codeCard.updated || report.codeCard.retired || report.codeCard.aiDemoted || live.playsSource !== 'code') changed = true;
+      // ---- PATRICK'S VARIABLES: yo-yo flags + PS cross-reference (Carl 2026-09-04; this card only) ----
+      {
+        let pv = live.cards.find(c => c.id === 'patrick-variables');
+        if (!pv) { pv = { id: 'patrick-variables', title: "Patrick's Variables (experimental, paper-traded only)", picks: [] }; live.cards.push(pv); }
+        if (!Array.isArray(pv.picks)) pv.picks = [];
+        report.yoyo = upsertYoYoPicks(pv, linesDoc.games, startedAt, { todayPT });
+        report.pvCrossRef = crossReference(pv);
+        if (report.yoyo.created || report.yoyo.updated || report.pvCrossRef) changed = true;
+      }
       for (const c of live.cards) {
         if (!/^(slate|code)-/.test(String(c.id)) || !Array.isArray(c.picks)) continue;
         for (const lp of c.picks) {
@@ -449,14 +470,14 @@ export default async function handler(req, res) {
         if (!Array.isArray(c.picks)) continue;
         for (const lp of c.picks) {
           if (lp.result && lp.result !== 'pending') continue;
-          if (lp.status === 'dead' || lp.kind === 'injury' || lp.kind === 'ufc') continue;
+          if (lp.status === 'dead' || lp.kind === 'injury' || lp.kind === 'ufc' || lp.kind === 'yoyo') continue;
           const g = parseLiveGame(lp.game, startedAt);
           if (!g?.date || !g.sport || g.date > todayPT) continue;
           if (lp.start && new Date(lp.start) > startedAt) continue;
           const key = `${g.sport}|${g.date}`;
           if (!(key in espnLive)) { try { espnLive[key] = await fetchScoreboard(g.sport, g.date.replace(/-/g, '')); } catch { espnLive[key] = null; } }
           if (!espnLive[key]) continue;
-          const gp = lp.src === 'code' && lp.side
+          const gp = (lp.src === 'code' || lp.src === 'phil-steele') && lp.side
             ? { type: lp.type, pick: lp.pick, sport: lp.sport || g.sport, date: lp.date || g.date, away: lp.away || g.away, home: lp.home || g.home, side: lp.side, line: lp.line ?? null, total: lp.total ?? null, dhIndex: lp.dhIndex ?? null }
             : liveGradePick(lp, g); // AI-written picks: read the side/number from their own text
           if (!gp) continue;
@@ -480,6 +501,7 @@ export default async function handler(req, res) {
   picksDoc.heartbeat = ts;
   await writeBlob(SNAP_BLOB, snapDoc);
   await writeBlob(PICKS_BLOB, picksDoc);
+  await writeBlob(LINES_BLOB, linesDoc);
 
   report.tookMs = Date.now() - startedAt.getTime();
   return res.status(200).json(report);

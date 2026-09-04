@@ -145,6 +145,8 @@
   .nobet.done{background:rgba(224,82,82,.16);color:#e05252;border:1px solid #e05252;font-size:11px;box-shadow:none}
   /* 98/2 read — posted at its tier, with an asterisk */
   .kbadge.flag98{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(233,169,74,.5)}
+  .kbadge.ps{background:rgba(255,140,0,.18);color:#ff9a2e;border:1px solid rgba(255,140,0,.65)}
+  .kbadge.yoyo{background:rgba(160,90,255,.2);color:#cdb0ff;border:1px solid rgba(160,90,255,.7)}
 .kbadge.codepick{background:#0f3d2e;color:#7ee2b8;border:1px solid #1f6b4f}
 .kbadge.ainote{background:#2a2a2a;color:#9a9a9a;border:1px solid #444}
   sup.ast{color:var(--amber);font-weight:700;font-size:.8em;margin-left:1px}
@@ -704,7 +706,8 @@ function tabRecordsHTML(){
   function sportTag(p){var m=String(p.game||'').match(/\((NFL|WNBA|NBA|CFB|CBB|MLB|NHL)\)/i);return m?m[1].toUpperCase():''}
   var TABS=[
     ['Plays (ledger)',function(p,id){return !!p.playsShownAt&&!p.noBet}],
-    ['Patrick’s Variables',function(p,id){return id==='patrick-variables'&&p.kind!=='injury'}],
+    ['Patrick’s Variables',function(p,id){return id==='patrick-variables'&&p.kind!=='injury'&&p.kind!=='ps'&&p.kind!=='yoyo'}],
+    ['Phil Steele (PS)',function(p,id){return id==='patrick-variables'&&p.kind==='ps'}],
     ['R&amp;D',function(p,id){return id==='rnd-fade'}],
     ['NHL',function(p,id){return !PAPER[id]&&sportTag(p)==='NHL'}],
     ['Fade system',function(p,id){return !PAPER[id]&&!ANGLE[id]&&(!p.kind||p.kind==='fade')}],
@@ -946,8 +949,11 @@ function render(){
   }
   allCards.forEach(function(cd){cd.picks.forEach(function(p){p._sport=sportOf(p,cd);p._cardId=cd.id})});
   function pickRow(p){
-    var kb=['fade','rlm','wcoast','roaddog','homedog','injury','steam','latepub','ufc'].indexOf(p.kind)>=0?p.kind:'sharp';
-    var kl={fade:'Fade',rlm:'Line move',wcoast:'West Coast',roaddog:'Road dog 1H',homedog:'Home dog 1H',injury:'\u26a0 Injury',steam:'Early steam',latepub:'Late/public',ufc:'UFC'}[p.kind]||'Sharp $';
+    var kb=['fade','rlm','wcoast','roaddog','homedog','injury','steam','latepub','ufc','ps','yoyo'].indexOf(p.kind)>=0?p.kind:'sharp';
+    var kl={fade:'Fade',rlm:'Line move',wcoast:'West Coast',roaddog:'Road dog 1H',homedog:'Home dog 1H',injury:'\u26a0 Injury',steam:'Early steam',latepub:'Late/public',ufc:'UFC',ps:(p.psWho==='computer'?'PS\u00b7C':'PS'),yoyo:'Yo-Yo'}[p.kind]||'Sharp $';
+    /* Patrick's Variables cross-reference (Carl 2026-09-04): PS = on Phil Steele's Pressbox sheet (orange; PS·C = his computer), Yo-Yo = the line went out and came back (purple) */
+    var xref=(p.psFlag?'<span class="kbadge ps" title="This game is a Phil Steele Pressbox '+(p.psFlag==='computer'?'Computer':'Phil')+' Best Bet this week">'+(p.psFlag==='computer'?'PS\u00b7C':'PS')+'</span>':'')
+      +(p.yoyoFlag?'<span class="kbadge yoyo" title="Yo-yo line: '+esc(p.yoyoFlag)+'">Yo-Yo</span>':'');
     var res=p.result&&p.result!=='pending'?'<span class="pill '+esc(p.result)+'">'+(p.result==='win'?'W':p.result==='loss'?'L':'P')+'</span>':'';
     var stack=p.stack?'<span class="kbadge stack">⚡ Stacked</span>':'';
     var sp=p._sport?'<span class="sporttag">'+esc(p._sport)+'</span>':'';
@@ -972,7 +978,8 @@ function render(){
         :L.why==='faded'?'<span class="cchip lcwarn" title="Same public side but below the 60/8 bar on the latest read">⚠ faded · '+esc(when)+'</span>':'';
     }
     var codeB=p.src==='code'?'<span class="kbadge codepick" title="Picked by the code pipeline from the VSiN board (tickets vs money), not by an AI">⚙ code</span>':(p.aiNote?'<span class="kbadge ainote" title="AI-written note — not a play since the Sep 4 cutover">AI note</span>':'');
-    return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+'"><span class="kbadge '+kb+'">'+kl+'</span>'+codeB+stack+f98
+    var kbTitle=p.kind==='ps'?' title="Phil Steele Inside the Pressbox '+(p.psWho==='computer'?'Computer Best Bet':'Phil\u2019s Best Bet')+(p.week?' \u00b7 Week '+esc(String(p.week)):'')+'"':p.kind==='yoyo'?' title="The line went from one number to another and back (VSiN/DK). Flag only \u2014 not a bet, not graded."':'';
+    return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+'"><span class="kbadge '+kb+'"'+kbTitle+'>'+kl+'</span>'+xref+codeB+stack+f98
       +'<div class="pmain">'+sp+'<b>'+esc(p.pick)+(f98?'<sup class="ast">*</sup>':'')+'</b> · '+esc(gameTxt)+stTxt+pushNote+'<div class="psig">'+esc(p.signal||'')+'</div></div>'
       +res
       +'<span class="chips">'+lc+nb+confirmChip(p)+contChip(p)+'</span>'
@@ -1078,13 +1085,19 @@ function render(){
   if(cardSub==='patrick'){
   var pvCard=allCards.filter(function(cd){return cd.id==='patrick-variables'})[0];
   var pvPicks=pvCard?sortByGame(pvCard.picks):[];
-  h+='<section class="panel"><h2>Patrick\u2019s Variables <small>experimental \u2014 the frozen fade formula plus new variables \u00b7 injury-driven moves alert \u00b7 early moves tagged steam (tail candidates), late moves tagged public (fade candidates) \u00b7 all paper-tracked until the pattern proves out</small></h2>';
+  h+='<section class="panel"><h2>Patrick\u2019s Variables <small>experimental \u2014 the frozen fade formula plus new variables \u00b7 injury-driven moves alert \u00b7 early moves tagged steam (tail candidates), late moves tagged public (fade candidates) \u00b7 <span style="color:#ff9a2e">PS</span> = Phil Steele Pressbox best bets (orange; PS\u00b7C = his computer) \u00b7 <span style="color:#cdb0ff">Yo-Yo</span> = a line that went out and came back (purple, flag only) \u00b7 all paper-tracked until the pattern proves out</small></h2>';
   var pvRec={w:0,l:0},pvPlay={w:0,l:0};
+  var psRec={phil:{w:0,l:0},computer:{w:0,l:0}},yoyoN=0;
   (pvCard?pvCard.picks:[]).forEach(function(p){
+    if(p.kind==='yoyo'){if(!p.result)yoyoN++;return;}
+    if(p.kind==='ps'){var r=psRec[p.psWho==='computer'?'computer':'phil'];if(p.result==='win')r.w++;else if(p.result==='loss')r.l++;return;}
     if(p.kind==='injury')return;
     if(p.result==='win'){pvRec.w++;if(p.status==='play')pvPlay.w++;}
     else if(p.result==='loss'){pvRec.l++;if(p.status==='play')pvPlay.l++;}
   });
+  if(psRec.phil.w+psRec.phil.l+psRec.computer.w+psRec.computer.l>0){
+    h+='<p class="sysrec" style="border-left:3px solid #ff9a2e">Phil Steele (PS) paper record \u2014 Phil\u2019s Best Bets <b>'+psRec.phil.w+'\u2013'+psRec.phil.l+'</b> \u00b7 Computer Best Bets <b>'+psRec.computer.w+'\u2013'+psRec.computer.l+'</b> \u00b7 kept apart from Patrick\u2019s record.</p>';
+  }
   if(pvRec.w+pvRec.l>0){
     h+='<p class="sysrec" style="border-left:3px solid #B48EE0">Patrick\u2019s paper record \u2014 tracked as if bet, but NOT bet: <b>'+pvRec.w+'\u2013'+pvRec.l+'</b> ('+netUnits(pvRec.w,pvRec.l)+' at \u2212110)'+(pvPlay.w+pvPlay.l?' \u00b7 paper plays <b>'+pvPlay.w+'\u2013'+pvPlay.l+'</b> ('+netUnits(pvPlay.w,pvPlay.l)+')':'')+' \u00b7 separate from the real system record.</p>';
   }
