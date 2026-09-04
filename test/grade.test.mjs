@@ -77,3 +77,18 @@ test('live-card "BOS Red Sox" grades against ESPN Boston Red Sox, never the Whit
   const t = { type: 'Total', pick: 'Over 9', sport: 'MLB', date: '2026-09-04', away: 'MIN Twins', home: 'CWS White Sox', side: 'over', total: 9 };
   assert.equal(gradeAgainst(matchGame(events, t), t), 'win');
 });
+
+test('fetchScoreboard skips a shell ESPN event with no competitions instead of throwing', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ events: [
+    { id: '1', name: 'shell' },
+    { id: '2', date: '2026-09-05T23:00Z', competitions: [{ status: { type: { completed: false, state: 'pre' } }, competitors: [
+      { homeAway: 'home', team: { displayName: 'Bowling Green Falcons', location: 'Bowling Green' }, score: '0' },
+      { homeAway: 'away', team: { displayName: 'Tarleton State Texans', location: 'Tarleton State' }, score: '0' } ] }] },
+  ] }) });
+  try {
+    const { fetchScoreboard } = await import('../lib/grade.mjs');
+    const ev = await fetchScoreboard('MLB', '20260905');
+    assert.equal(ev.length, 1); assert.equal(ev[0].away, 'Tarleton State Texans');
+  } finally { globalThis.fetch = realFetch; }
+});
