@@ -98,15 +98,31 @@ def parse_index(page):
     return picks
 
 def game_pages(doc):
+    """Per game page: Vegas line/total read from positioned words (plain text extraction merges adjacent columns —
+    'By 3' came out as 'By 13.0'), plus the 'Best Bet' projected score line that only starred games carry."""
     out = []
     for i in range(1, len(doc)):
-        t = doc[i].get_text('text')
-        line = re.search(r'VEGAS LINE\s*\n\s*(.+?)\s+By\s+([\d.]+)', t)
-        total = re.search(r'VEGAS TOTAL\s*\n\s*([\d.]+)\s+Points', t)
-        bb = re.search(r'Best Bet:?\s*\S?\s*(.+?)\s+(\d+)\s+(?:\(\+\)\s+)?(.+?)\s+(\d+)\s*$', t, re.M)
-        out.append({'page': i + 1, 'text': t, 'line': (line.group(1).strip(), float(line.group(2))) if line else None,
-                    'total': float(total.group(1)) if total else None,
-                    'bestBet': {'team': bb.group(1).strip(), 'score': re.sub(r'\s*\(\+\)\s*', ' ', f"{bb.group(1).strip()} {bb.group(2)} {bb.group(3).strip()} {bb.group(4)}")} if bb else None})
+        pg = doc[i]; t = pg.get_text('text'); ws = pg.get_text('words')
+        def row_after(label1, label2):
+            anchors = [w for w in ws if w[4] == label1]
+            for a in anchors:
+                row = sorted([w for w in ws if abs(w[1] - a[1]) < 6 and w[0] >= a[0]], key=lambda w: w[0])
+                toks = [w[4] for w in row]
+                if len(toks) >= 2 and toks[1] == label2: return toks[2:]
+            return None
+        line = None; total = None
+        r = row_after('VEGAS', 'LINE')
+        if r and 'By' in r:
+            k = r.index('By'); team = ' '.join(r[:k]).strip()
+            try: line = (team, float(r[k + 1]))
+            except (ValueError, IndexError): line = None
+        r = row_after('VEGAS', 'TOTAL')
+        if r and 'Points' in r:
+            try: total = float(r[0])
+            except ValueError: total = None
+        bb = re.search(r'^Best Bet:?\s*\S?\s*(.+?)\s+(\d+)\s+(?:\(\+\)\s+)?(.+?)\s+(\d+)\s*$', t, re.M)
+        out.append({'page': i + 1, 'text': t, 'line': line, 'total': total,
+                    'bestBet': {'team': bb.group(1).strip(), 'score': f"{bb.group(1).strip()} {bb.group(2)} {bb.group(3).strip()} {bb.group(4)}"} if bb else None})
     return out
 
 def main():

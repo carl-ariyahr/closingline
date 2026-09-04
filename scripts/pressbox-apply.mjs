@@ -38,13 +38,16 @@ for (const p of doc.picks) {
   }
   if (line == null && vsinLineHome != null) { line = sideKey === 'home' ? vsinLineHome : -vsinLineHome; lineSrc = 'vsin'; }
   const sideName = sideKey === 'away' ? away : home;
+  // sanity: the sheet's line should sit near the live board's line (a wrong page or a misread would not)
+  let warn = '';
+  if (lineSrc === 'sheet' && vsinLineHome != null) { const boardLine = sideKey === 'home' ? vsinLineHome : -vsinLineHome; if (Math.abs(boardLine - line) > 7) warn = ` · ⚠ sheet line ${line > 0 ? '+' : ''}${line} vs board ${boardLine > 0 ? '+' : ''}${boardLine} — check the sheet`; }
   const who = p.who === 'phil' ? "Phil's Best Bet" : 'Computer Best Bet';
   const pick = {
     kind: 'ps', src: 'phil-steele', psWho: p.who, week: doc.week, sheet: doc.source,
     psKey: `ps|${doc.week}|${date}|${[nick(away), nick(home)].sort().join('~')}|${nick(sideName)}`,
     type: 'Spread', pick: line == null ? `${sideName} (line TBD)` : `${sideName} ${line > 0 ? '+' : ''}${line}`,
     game: `${away} @ ${home} — ${date} (${doc.sport})`,
-    signal: `PS · ${who}, Pressbox Week ${doc.week}` + (p.vegasLine ? ` · sheet line ${p.vegasLine[0]} by ${p.vegasLine[1]}` : '') + (p.vegasTotal ? `, total ${p.vegasTotal}` : '') + (p.bestBet?.score ? ` · projected ${p.bestBet.score}` : '') + (lineSrc === 'vsin' ? ' · line from the VSiN board (sheet had none)' : ''),
+    signal: `PS · ${who}, Pressbox Week ${doc.week}` + (p.vegasLine ? ` · sheet line ${p.vegasLine[0]} by ${p.vegasLine[1]}` : '') + (p.vegasTotal ? `, total ${p.vegasTotal}` : '') + (p.bestBet?.score ? ` · projected ${p.bestBet.score}` : '') + (lineSrc === 'vsin' ? ' · line from the VSiN board (sheet had none)' : '') + warn,
     status: line == null ? 'alert' : 'play', side: sideKey, line: line == null ? null : `${line > 0 ? '+' : ''}${line}`,
     away, home, date, sport: doc.sport, gamecode, start, importedAt: new Date().toISOString(),
   };
