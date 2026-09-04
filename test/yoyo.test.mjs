@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { recordLines, detectYoYo, upsertYoYoPicks, crossReference, sameGame } from '../lib/yoyo.mjs';
+import { recordLines, detectYoYo, upsertYoYoPicks, crossReference, sameGame, cents } from '../lib/yoyo.mjs';
 
 const g = (line, total, extra = {}) => ({ gamecode: '20260913NFL00001', sport: 'NFL', date: '2026-09-13', away: 'Green Bay Packers', home: 'San Francisco 49ers', spread: { line_home: line }, total: { line: total }, ...extra });
 
@@ -21,10 +21,15 @@ test('recordLines stores change points only; detectYoYo = any move back toward t
   // moneyline prices are tracked in every sport (Carl: "all lines")
   const m = {};
   const ml = (p, extra = {}) => ({ gamecode: '20260905MLB00002', sport: 'MLB', date: '2026-09-05', away: 'Athletics', home: 'Seattle Mariners', spread: { line_home: -1.5 }, total: { line: 7.5 }, ml: { away_price: p, home_price: -p - 30 }, ...extra });
-  recordLines(m, [ml(150)], '2026-09-04T12:00:00Z'); recordLines(m, [ml(170)], '2026-09-04T15:00:00Z'); recordLines(m, [ml(160)], '2026-09-04T18:00:00Z');
-  const y = detectYoYo(m['20260905MLB00002'].Moneyline); assert.deepEqual(y.path, [150, 170, 160]);
+  // 20-cent minimum for moneyline moves (Carl 2026-09-04): 150 → 165 is ignored, 150 → 170 counts, 170 → 150 counts
+  recordLines(m, [ml(150)], '2026-09-04T12:00:00Z'); recordLines(m, [ml(165)], '2026-09-04T13:00:00Z'); recordLines(m, [ml(170)], '2026-09-04T15:00:00Z'); recordLines(m, [ml(160)], '2026-09-04T16:00:00Z'); recordLines(m, [ml(150)], '2026-09-04T18:00:00Z');
+  assert.deepEqual(m['20260905MLB00002'].Moneyline.map(x => x[1]), [150, 170, 150]);
+  const y = detectYoYo(m['20260905MLB00002'].Moneyline, cents); assert.deepEqual(y.path, [150, 170, 150]);
   const card = { picks: [] }; upsertYoYoPicks(card, m, new Date('2026-09-04T20:00:00Z'), { todayPT: '2026-09-04' });
-  assert.match(card.picks[0].pick, /Athletics ML \+150 → \+170 → \+160/);
+  assert.match(card.picks[0].pick, /Athletics ML \+150 → \+170 → \+150/);
+  // crossing the +/-100 boundary is measured in cents: -105 → +105 is 10 cents, not a move
+  const c = {}; recordLines(c, [ml(-105)], '2026-09-04T12:00:00Z'); recordLines(c, [ml(105)], '2026-09-04T13:00:00Z'); recordLines(c, [ml(120)], '2026-09-04T14:00:00Z');
+  assert.deepEqual(c['20260905MLB00002'].Moneyline.map(x => x[1]), [-105, 120]);
 });
 
 test('yo-yo entries land on the Patrick card as flag-only alerts, pre-game only, idempotent', () => {
