@@ -40,10 +40,11 @@ test('doubleheader rows do not collide (dhIndex in the key) and the parser numbe
   for (const r of out.rows) assert.ok(r.dhIndex === 0 || r.dhIndex === 1);
 });
 
-test('window: non-football 96h (day-based), football 7 days', () => {
+test('window: every sport 7 days from game day (Carl 2026-09-04)', () => {
   const now = new Date('2026-09-02T19:00:00Z'); // Sep 2, noon PT
-  assert.equal(withinWindow('MLB', '2026-09-06', now), true);   // starts in 3.5 days
-  assert.equal(withinWindow('MLB', '2026-09-07', now), false);  // 4.5 days
+  assert.equal(withinWindow('MLB', '2026-09-06', now), true);   // 3.5 days
+  assert.equal(withinWindow('MLB', '2026-09-09', now), true);   // 6.5 days — inside 7 now
+  assert.equal(withinWindow('MLB', '2026-09-10', now), false);  // 7.5 days
   assert.equal(withinWindow('NFL', '2026-09-09', now), true);
   assert.equal(withinWindow('NFL', '2026-09-10', now), false);
 });
