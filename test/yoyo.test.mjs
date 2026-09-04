@@ -4,17 +4,20 @@ import { recordLines, detectYoYo, upsertYoYoPicks, crossReference, sameGame } fr
 
 const g = (line, total, extra = {}) => ({ gamecode: '20260913NFL00001', sport: 'NFL', date: '2026-09-13', away: 'Green Bay Packers', home: 'San Francisco 49ers', spread: { line_home: line }, total: { line: total }, ...extra });
 
-test('recordLines stores change points only; detectYoYo finds out-and-back of any size', () => {
+test('recordLines stores change points only; detectYoYo = any move back toward the opener (full or partial)', () => {
   const h = {};
   recordLines(h, [g(-3, 47.5)], 't1'); recordLines(h, [g(-3, 47.5)], 't2'); recordLines(h, [g(-6, 47.5)], 't3'); recordLines(h, [g(-4.5, 48)], 't4'); recordLines(h, [g(-3, 48)], 't5');
   const s = h['20260913NFL00001'];
   assert.deepEqual(s.Spread.map(x => x[1]), [-3, -6, -4.5, -3]);
   assert.deepEqual(s.Total.map(x => x[1]), [47.5, 48]);
   const yy = detectYoYo(s.Spread);
-  assert.deepEqual([yy.from, yy.to, yy.back], [-3, -6, -3]); assert.deepEqual(yy.path, [-3, -6, -4.5, -3]);
+  assert.deepEqual([yy.from, yy.to, yy.back], [-3, -6, -4.5]); assert.deepEqual(yy.path, [-3, -6, -4.5]); // flagged the moment it turned back
   assert.equal(detectYoYo(s.Total), null);
-  assert.deepEqual(detectYoYo([['a', 48.5], ['b', 49], ['c', 48.5]]).path, [48.5, 49, 48.5]); // half a point counts (Carl: any change)
-  assert.equal(detectYoYo([['a', -3], ['b', -6], ['c', -7]]), null); // never came back
+  assert.deepEqual(detectYoYo([['a', -6], ['b', -10], ['c', -9]]).path, [-6, -10, -9]); // Carl's example: partial return counts
+  assert.deepEqual(detectYoYo([['a', 48.5], ['b', 49], ['c', 48.5]]).path, [48.5, 49, 48.5]); // half a point counts (any change)
+  assert.equal(detectYoYo([['a', -3], ['b', -6], ['c', -7]]), null); // kept moving away — no yo-yo
+  assert.equal(detectYoYo([['a', -3], ['b', -1], ['c', 1]]), null);  // moving away through zero is still away
+  assert.deepEqual(detectYoYo([['a', -3], ['b', -1], ['c', -2]]).path, [-3, -1, -2]); // back toward -3
 });
 
 test('yo-yo entries land on the Patrick card as flag-only alerts, pre-game only, idempotent', () => {
