@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLiveGame, matchLiveGame, liveSide, liveCheck, applyLiveCheck, applyContention, liveGradePick } from '../lib/liveconfirm.mjs';
+import { parseLiveGame, matchLiveGame, liveCandidates, applyDHTag, liveSide, liveCheck, applyLiveCheck, applyContention, liveGradePick } from '../lib/liveconfirm.mjs';
 import { matchGame, gradeAgainst } from '../lib/grade.mjs';
 
 const NOW = new Date('2026-09-02T20:20:00Z');
@@ -119,4 +119,20 @@ test('applyContention keeps exactly one contention tag, replaces the AI wording,
   assert.equal((lp.signal.match(/⚾ CONTENTION/g) || []).length, 1); // the confirm pass never duplicates or drops it
   assert.equal(applyContention(lp, null), true);
   assert.ok(!/CONTENTION/.test(lp.signal)); assert.equal(lp.contention, null);
+});
+
+test('doubleheader: a Total resolves by its line, a team pick without a game number is left unresolved (never guessed)', () => {
+  const mk = (code, dh, line) => ({ gamecode: code, sport: 'MLB', date: '2026-09-04', dhIndex: dh, away: 'Detroit Tigers', home: 'Cleveland Guardians',
+    spread: { away: {}, home: {} }, total: { line, over: { handle: 68, bets: 65 }, under: { handle: 32, bets: 35 } }, ml: { away: { handle: 58, bets: 38 }, home: { handle: 42, bets: 62 } } });
+  const games = [mk('20260904MLB00007', 0, 8.5), mk('20260904MLB000072', 1, 8)];
+  const under8 = { type: 'Total', pick: 'Under 8', game: 'DET Tigers @ CLE Guardians — Sep 4 (MLB)' };
+  assert.equal(liveCandidates(games, under8).length, 2);
+  assert.equal(matchLiveGame(games, under8)?.dhIndex, 1);
+  const ml = { type: 'Moneyline', pick: 'Detroit Tigers ML', game: 'DET Tigers @ CLE Guardians — Sep 4 (MLB)', signal: 'x' };
+  assert.equal(matchLiveGame(games, ml), null);
+  assert.equal(matchLiveGame(games, { ...ml, dhIndex: 1 })?.gamecode, '20260904MLB000072');
+  assert.equal(applyDHTag(ml, true), true); assert.match(ml.signal, /DOUBLEHEADER/);
+  assert.equal(applyDHTag(ml, true), false); assert.equal((ml.signal.match(/DOUBLEHEADER/g) || []).length, 1);
+  assert.equal(applyDHTag(ml, false), true); assert.equal(ml.signal, 'x');
+  assert.equal(liveGradePick(ml, { away: 'DET Tigers', home: 'CLE Guardians', date: '2026-09-04', sport: 'MLB' }).dhIndex, null);
 });

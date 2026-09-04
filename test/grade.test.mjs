@@ -103,3 +103,12 @@ test('a pick whose game string has home/away backwards still grades OUR team (Ro
   const bad = { type: 'Moneyline', pick: 'New York ML', sport: 'MLB', date: '2026-09-03', away: 'New York', home: 'New York Mets', side: 'away' };
   assert.equal(gradeAgainst(ny, bad), null); // "New York" fits both sides → never guess
 });
+
+test('doubleheader on ESPN: grade only when the pick pins a game (dhIndex); otherwise null', () => {
+  const ev = (d, as, hs) => ({ completed: true, away: 'Detroit Tigers', awayLoc: 'Detroit', home: 'Cleveland Guardians', homeLoc: 'Cleveland', awayScore: as, homeScore: hs, awayQ: [], homeQ: [], date: d });
+  const events = [ev('2026-09-05T00:15Z', 2, 6), ev('2026-09-04T17:10Z', 5, 1)]; // listed out of order on purpose
+  const base = { type: 'Moneyline', pick: 'Detroit Tigers ML', sport: 'MLB', date: '2026-09-04', away: 'DET Tigers', home: 'CLE Guardians', side: 'away' };
+  assert.equal(matchGame(events, { ...base, dhIndex: null }), null);
+  assert.equal(gradeAgainst(matchGame(events, { ...base, dhIndex: 0 }), base), 'win');  // game 1 (earlier start) 5-1
+  assert.equal(gradeAgainst(matchGame(events, { ...base, dhIndex: 1 }), base), 'loss'); // game 2 2-6
+});

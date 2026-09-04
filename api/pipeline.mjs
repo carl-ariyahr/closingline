@@ -11,7 +11,7 @@ import { gradePicks, fetchScoreboard, matchGame, gradeAgainst } from '../lib/gra
 import { loadContention } from '../lib/contention.mjs';
 import { AN_LEAGUE, fetchActionHTML, parseActionSplits } from '../lib/actionnetwork.mjs';
 import { sameTeam, matchPair, stripPickSuffix, nick } from '../lib/names.mjs';
-import { matchLiveGame, liveCheck, applyLiveCheck, applyContention, parseLiveGame, liveGradePick } from '../lib/liveconfirm.mjs';
+import { matchLiveGame, liveCandidates, applyDHTag, liveCheck, applyLiveCheck, applyContention, parseLiveGame, liveGradePick } from '../lib/liveconfirm.mjs';
 import { continuityDecide } from '../lib/continuity.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
@@ -190,12 +190,12 @@ export default async function handler(req, res) {
   //          do not pull data after it starts — it would skew the record") ----
   // Source: Action Network rows (start_time) first; ESPN scoreboard (free) as fallback. A game whose start
   // has passed is dropped from the snapshot, from the pick search, and from re-confirmation.
-  const pairKey = (sport, date, a, h) => `${sport}|${date}|${[nick(a), nick(h)].sort().join('~')}`;
+  const pairKey = (sport, date, a, h, dh = 0) => `${sport}|${date}|${[nick(a), nick(h)].sort().join('~')}|${dh || 0}`; // doubleheaders keyed by game index
   const startMap = {};
-  for (const r of Object.values(extDoc.rows)) if (r.start) startMap[pairKey(r.league, r.date, r.away, r.home)] = r.start;
+  for (const r of Object.values(extDoc.rows)) if (r.start) startMap[pairKey(r.league, r.date, r.away, r.home, r.dhIndex)] = r.start;
   const espnCache = {};
   async function startTimeFor(g) {
-    const direct = startMap[pairKey(g.sport, g.date, g.away, g.home)];
+    const direct = startMap[pairKey(g.sport, g.date, g.away, g.home, g.dhIndex)];
     if (direct) return direct;
     const key = `${g.sport}|${g.date}`;
     if (!(key in espnCache)) {
@@ -283,7 +283,13 @@ export default async function handler(req, res) {
             }
           }
           const g = matchLiveGame(freshGames, lp); // freshGames is pre-game only (step 2a)
-          if (!g) { report.liveConfirm.notOnBoard++; continue; } // started / off the board — leave it alone
+          const dh = liveCandidates(freshGames, lp).length > 1; // doubleheader on the board
+          if (!g) {
+            if (dh) { report.liveConfirm.doubleheaderUnresolved = (report.liveConfirm.doubleheaderUnresolved || 0) + 1; if (applyDHTag(lp, true)) changed = true; }
+            report.liveConfirm.notOnBoard++; continue; // started / off the board — leave it alone
+          }
+          if (applyDHTag(lp, false)) changed = true;
+          if (dh && lp.dhIndex !== (g.dhIndex || 0)) { lp.dhIndex = g.dhIndex || 0; changed = true; } // pin the game so grading reads the right final
           if (g.start && lp.start !== g.start) { lp.start = g.start; changed = true; } // show the kickoff on the card
           // playoff-contention flag in CODE (Carl 2026-09-04: the AI card missed it on 6 of 11 plays) — one replaceable tag
           if (applyContention(lp, await contentionNote(g.sport, g.away, g.home))) { report.liveConfirm.contention = (report.liveConfirm.contention || 0) + 1; changed = true; }
