@@ -11,7 +11,7 @@ import { gradePicks, fetchScoreboard, matchGame, gradeAgainst } from '../lib/gra
 import { loadContention } from '../lib/contention.mjs';
 import { AN_LEAGUE, fetchActionHTML, parseActionSplits } from '../lib/actionnetwork.mjs';
 import { sameTeam, matchPair, stripPickSuffix, nick } from '../lib/names.mjs';
-import { matchLiveGame, liveCandidates, applyDHTag, liveCheck, applyLiveCheck, applyContention, parseLiveGame, liveGradePick } from '../lib/liveconfirm.mjs';
+import { matchLiveGame, liveCandidates, applyDHTag, liveCheck, applyLiveCheck, applyContention, parseLiveGame, liveGradePick, noBetAtKickoff } from '../lib/liveconfirm.mjs';
 import { continuityDecide } from '../lib/continuity.mjs';
 import { syncCodeCard } from '../lib/codecard.mjs';
 
@@ -463,6 +463,7 @@ export default async function handler(req, res) {
           const result = gradeAgainst(matchGame(espnLive[key], gp), gp);
           if (!result) continue;
           lp.result = result; lp.gradedAt = ts; lp.gradedBy = 'code';
+          if (noBetAtKickoff(lp)) { lp.noBet = true; lp.noBetAt = lp.liveCheck.ts; } // crowd had flipped at kickoff → not a bet, not counted
           if (lp.status === 'play' || lp.stack) lp.featured = true;
           report.liveGraded.push({ pick: lp.pick, game: lp.game, result });
           changed = true;

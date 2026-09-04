@@ -139,6 +139,10 @@
   .cchip.lcok{background:var(--win-dim);color:var(--win);border-color:rgba(85,181,134,.4)}
   .cchip.lcwarn{background:var(--amber-dim);color:var(--amber);border-color:rgba(233,169,74,.5)}
   .cchip.lcbad{background:rgba(224,82,82,.14);color:#e05252;border-color:rgba(224,82,82,.5);font-weight:600}
+  .cchip.contention{background:rgba(120,90,220,.16);color:#b8a6ea;border-color:rgba(120,90,220,.55)}
+  .chips{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}
+  .nobet{font-family:var(--disp);font-weight:800;font-size:13px;letter-spacing:.08em;background:#e05252;color:#fff;border-radius:6px;padding:6px 12px;flex:none;white-space:nowrap;box-shadow:0 0 0 2px rgba(224,82,82,.35)}
+  .nobet.done{background:rgba(224,82,82,.16);color:#e05252;border:1px solid #e05252;font-size:11px;box-shadow:none}
   /* 98/2 read — posted at its tier, with an asterisk */
   .kbadge.flag98{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(233,169,74,.5)}
 .kbadge.codepick{background:#0f3d2e;color:#7ee2b8;border:1px solid #1f6b4f}
@@ -657,11 +661,22 @@ function ledgerPicks(){
   picksData.cards.forEach(function(cd){ if(!Array.isArray(cd.picks))return; cd.picks.forEach(function(p){ if(p.playsShownAt){p._cardId=p._cardId||cd.id;out.push(p)} }); });
   return out;
 }
+/* DO NOT BET (Carl 2026-09-04): a play whose crowd has FLIPPED to our side is not a bet. While live it wears a red
+   emblem; the emblem comes off if the signal returns. The read at kickoff decides: flipped at kickoff → the pipeline
+   stamps noBet and the play is left out of every record count (it still shows, with its result, marked not counted). */
+function isNoBetLive(p){ return !!(p.liveCheck&&!p.liveCheck.ok&&p.liveCheck.why==='flipped'&&(!p.result||p.result==='pending')); }
+function ledgerCounted(){ return ledgerPicks().filter(function(p){return !p.noBet}); }
+function contChip(p){
+  var src=p.contention||String(p.signal||'');
+  var m=String(src).match(/CONTENTION:\s*(.*?)\s+out of the playoff race/i); if(!m)return '';
+  var teams=m[1].replace(/\s*\([^)]*\)/g,'').split(/\s*&\s*/).join(' & ');
+  return '<span class="cchip contention" title="'+esc(String(p.contention||m[0]))+'">⚾ out of race: '+esc(teams)+'</span>';
+}
 function ledgerHTML2(){
   var L=ledgerPicks();
   if(!L.length)return '<section class="panel"><h2>Plays ledger <small>every pick that appeared under Today’s Plays · counted the moment it was shown</small></h2><p class="none-msg">Starts clean Sep 2 — the first pick to appear on Today’s Plays will show here.</p></section>';
   L.sort(function(a,b){var da=gameDate(a),db=gameDate(b);return (db?db.getTime():0)-(da?da.getTime():0)});
-  var w=0,l=0,pu=0,pend=0; L.forEach(function(p){if(p.result==='win')w++;else if(p.result==='loss')l++;else if(p.result==='push')pu++;else pend++});
+  var w=0,l=0,pu=0,pend=0,nb=0; L.forEach(function(p){if(p.noBet){nb++;return;} if(p.result==='win')w++;else if(p.result==='loss')l++;else if(p.result==='push')pu++;else pend++});
   var rows=L.map(function(p){
     var r=p.result&&p.result!=='pending'?p.result:'pending';
     var st=startOf(p), when=gameISO(p)||'';
@@ -669,6 +684,7 @@ function ledgerHTML2(){
     var flags=[];
     if(p.liveCheck&&!p.liveCheck.ok&&p.liveCheck.why==='faded')flags.push('faded before start');
     if(p.liveCheck&&!p.liveCheck.ok&&p.liveCheck.why==='flipped')flags.push('public flipped');
+    if(p.noBet)flags.push('DO NOT BET at kickoff · not counted');
     if(p.status==='dead')flags.push('retired');
     if(p.flag98)flags.push('* 98/2');
     return '<div class="ledrow '+esc(r)+'"><span class="ldate">'+esc(when)+(tm?' · '+esc(tm):'')+'</span>'
@@ -676,7 +692,7 @@ function ledgerHTML2(){
       +'<span class="lres '+esc(r)+'">'+(r==='win'?'W':r==='loss'?'L':r==='push'?'P':'·')+'</span></div>';
   }).join('');
   return '<section class="panel"><h2>Plays ledger <small>every pick that appeared under Today’s Plays since Sep 2 · counted the moment it was shown, bet or not</small></h2>'
-    +'<p class="sysrec"><b>'+w+'–'+l+(pu?'–'+pu:'')+'</b> '+(w+l?'('+netUnits(w,l)+' at −110)':'')+(pend?' · '+pend+' pending':'')+'</p><div class="ledger">'+rows+'</div></section>';
+    +'<p class="sysrec"><b>'+w+'–'+l+(pu?'–'+pu:'')+'</b> '+(w+l?'('+netUnits(w,l)+' at −110)':'')+(pend?' · '+pend+' pending':'')+(nb?' · '+nb+' DO NOT BET at kickoff, not counted':'')+'</p><div class="ledger">'+rows+'</div></section>';
 }
 
 /* ---------- per-tab records (Carl 2026-09-02: "the record tab should include the different tabs' win and loss streaks") ----------
@@ -687,7 +703,7 @@ function tabRecordsHTML(){
   var ANGLE={'wcoast-angle':1,'roaddog-angle':1,'homedog-angle':1,'auto-alerts':1};
   function sportTag(p){var m=String(p.game||'').match(/\((NFL|WNBA|NBA|CFB|CBB|MLB|NHL)\)/i);return m?m[1].toUpperCase():''}
   var TABS=[
-    ['Plays (ledger)',function(p,id){return !!p.playsShownAt}],
+    ['Plays (ledger)',function(p,id){return !!p.playsShownAt&&!p.noBet}],
     ['Patrick’s Variables',function(p,id){return id==='patrick-variables'&&p.kind!=='injury'}],
     ['R&amp;D',function(p,id){return id==='rnd-fade'}],
     ['NHL',function(p,id){return !PAPER[id]&&sportTag(p)==='NHL'}],
@@ -757,7 +773,7 @@ function streakHTML(){
     +(function(){
       /* SEASON record of play-tier picks — same bucket as the Plays pill (no paper/angle cards, no dead picks) */
       var fw=0,fl=0,tw=0,tl=0,tp=0,tISO=ptISO();
-      ledgerPicks().forEach(function(p){
+      ledgerCounted().forEach(function(p){
         var today=(gameISO(p)===tISO);
         if(p.result==='win'){fw++;if(today)tw++}else if(p.result==='loss'){fl++;if(today)tl++}else if(today&&(!p.result||p.result==='pending'))tp++;
       });
@@ -948,18 +964,18 @@ function render(){
     var f98=(p.flag98||/98\/2 read/.test(String(p.signal||'')))?'<span class="kbadge flag98" title="98/2 read — one side sits at 98%+ or 2%-: a tiny or lopsided sample. Posted at its tier, treat with care.">* 98/2</span>':'';
     /* hourly CODE re-confirmation of live picks (lib/liveconfirm.mjs writes p.liveCheck) */
     var lc='', L=p.liveCheck;
+    var nb=(p.noBet&&p.result&&p.result!=='pending')?'<span class="nobet done" title="The crowd had flipped to our side at kickoff — this was not a bet and is not counted in the record">⛔ DO NOT BET · not counted</span>':'';
     if(L&&(!p.result||p.result==='pending')){
       var when=L.ts?new Date(L.ts).toLocaleTimeString('en-US',{timeZone:'America/Los_Angeles',hour:'numeric',minute:'2-digit'}).toLowerCase().replace(' ',''):'';
       lc=L.ok?'<span class="cchip lcok" title="Code re-read the live board and this pick still qualifies on the same side">✓ re-confirmed '+(L.n||1)+'× · '+esc(when)+'</span>'
-        :L.why==='flipped'?'<span class="cchip lcbad" title="The public is now on OUR side — the formula would not take this any more">⛔ public flipped · '+esc(when)+'</span>'
+        :L.why==='flipped'?'<span class="nobet" title="The crowd has flipped to OUR side ('+esc(when)+' read) — this is no longer a fade. Not a bet. The emblem comes off if the signal returns before kickoff.">⛔ DO NOT BET</span>'
         :L.why==='faded'?'<span class="cchip lcwarn" title="Same public side but below the 60/8 bar on the latest read">⚠ faded · '+esc(when)+'</span>':'';
     }
     var codeB=p.src==='code'?'<span class="kbadge codepick" title="Picked by the code pipeline from the VSiN board (tickets vs money), not by an AI">⚙ code</span>':(p.aiNote?'<span class="kbadge ainote" title="AI-written note — not a play since the Sep 4 cutover">AI note</span>':'');
     return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+'"><span class="kbadge '+kb+'">'+kl+'</span>'+codeB+stack+f98
       +'<div class="pmain">'+sp+'<b>'+esc(p.pick)+(f98?'<sup class="ast">*</sup>':'')+'</b> · '+esc(gameTxt)+stTxt+pushNote+'<div class="psig">'+esc(p.signal||'')+'</div></div>'
       +res
-      +lc
-      +confirmChip(p)
+      +'<span class="chips">'+lc+nb+confirmChip(p)+contChip(p)+'</span>'
       +'<span class="pstat '+esc(p.status||'lean')+'">'+esc(p.status||'lean')+'</span>'
       +logBtn+'</div>';
   }
@@ -1012,16 +1028,17 @@ function render(){
   /* PLAYS LEDGER (Carl 2026-09-02): the record counts ONLY picks the code stamped as shown on Today's Plays.
      Shown = counted, bet or not, faded or not. Clean start Sep 2, 2026. */
   var fRec={w:0,l:0};
-  ledgerPicks().forEach(function(p){ if(p.result==='win')fRec.w++; else if(p.result==='loss')fRec.l++; });
+  ledgerCounted().forEach(function(p){ if(p.result==='win')fRec.w++; else if(p.result==='loss')fRec.l++; });
   /* today's plays only (Pacific date) vs the season-to-date plays record — two different numbers */
   var tRec={w:0,l:0,pend:0}, tISO=ptISO();
-  ledgerPicks().forEach(function(p){
+  ledgerCounted().forEach(function(p){
     if(gameISO(p)!==tISO)return;
+    if(isNoBetLive(p))return; /* currently DO NOT BET — not a bet, not 'still to play' */
     if(p.result==='win')tRec.w++; else if(p.result==='loss')tRec.l++; else if(!p.result||p.result==='pending')tRec.pend++;
   });
   h+='<p class="sysrec" style="margin:12px 0 0">'
     +'Today’s plays: <b>'+tRec.w+'–'+tRec.l+'</b>'+(tRec.pend?' <span class="faint">('+tRec.pend+' still to play)</span>':'')
-    +' &nbsp;·&nbsp; Plays ledger since Sep 2: <b>'+fRec.w+'–'+fRec.l+'</b> ('+netUnits(fRec.w,fRec.l)+' at −110) — every pick that appeared here counts, bet or not. Full list on the Record tab.</p>';
+    +' &nbsp;·&nbsp; Plays ledger since Sep 2: <b>'+fRec.w+'–'+fRec.l+'</b> ('+netUnits(fRec.w,fRec.l)+' at −110) — every pick that appeared here counts unless it was DO NOT BET at kickoff. Full list on the Record tab.</p>';
   h+='</section>';
   }
 

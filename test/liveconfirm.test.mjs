@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLiveGame, matchLiveGame, liveCandidates, applyDHTag, liveSide, liveCheck, applyLiveCheck, applyContention, liveGradePick } from '../lib/liveconfirm.mjs';
+import { parseLiveGame, matchLiveGame, liveCandidates, applyDHTag, liveSide, liveCheck, applyLiveCheck, applyContention, liveGradePick, noBetAtKickoff } from '../lib/liveconfirm.mjs';
 import { matchGame, gradeAgainst } from '../lib/grade.mjs';
 
 const NOW = new Date('2026-09-02T20:20:00Z');
@@ -135,4 +135,15 @@ test('doubleheader: a Total resolves by its line, a team pick without a game num
   assert.equal(applyDHTag(ml, true), false); assert.equal((ml.signal.match(/DOUBLEHEADER/g) || []).length, 1);
   assert.equal(applyDHTag(ml, false), true); assert.equal(ml.signal, 'x');
   assert.equal(liveGradePick(ml, { away: 'DET Tigers', home: 'CLE Guardians', date: '2026-09-04', sport: 'MLB' }).dhIndex, null);
+});
+
+test('DO NOT BET: only a FLIPPED read at kickoff makes a play a no-bet; faded and ok do not', () => {
+  assert.equal(noBetAtKickoff({ liveCheck: { ok: false, why: 'flipped', ts: 't' } }), true);
+  assert.equal(noBetAtKickoff({ liveCheck: { ok: false, why: 'faded' } }), false);
+  assert.equal(noBetAtKickoff({ liveCheck: { ok: true } }), false);
+  assert.equal(noBetAtKickoff({}), false);
+  // bet → no bet → bet again: the latest read wins (applyLiveCheck replaces the whole liveCheck)
+  const lp = { pick: 'Under 9.5', signal: 'x' };
+  applyLiveCheck(lp, { ts: 't1', ok: false, why: 'flipped', T: 46, H: 98, D: -52 }, NOW); assert.equal(noBetAtKickoff(lp), true);
+  applyLiveCheck(lp, { ts: 't2', ok: true, T: 64, H: 30, D: 34, tier: 'play' }, NOW); assert.equal(noBetAtKickoff(lp), false);
 });
