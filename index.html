@@ -687,6 +687,8 @@ function ledgerPicks(){
    stamps noBet and the play is left out of every record count (it still shows, with its result, marked not counted). */
 function isNoBetLive(p){ return !!(p.liveCheck&&!p.liveCheck.ok&&p.liveCheck.why==='flipped'&&(!p.result||p.result==='pending')); }
 function ledgerCounted(){ return ledgerPicks().filter(function(p){return !p.noBet}); }
+/* 0 = clean fade on the latest read, 1 = weakened, 2 = DO NOT BET (used by Today's Plays grouping and the Cohorts tab) */
+function playState(p){ var L=p.liveCheck; if(isNoBetLive(p))return 2; if(L&&!L.ok&&L.why==='faded'&&(!p.result||p.result==='pending'))return 1; return 0; }
 document.addEventListener('toggle',function(ev){ var d=ev.target; if(!(d&&d.matches&&d.matches('details.cohortcard')))return;
   if(d.open){ document.querySelectorAll('details.cohortcard').forEach(function(o){ if(o!==d&&o.open)o.open=false; }); }
   try{ if(d.open)localStorage.setItem('closing-line-cohorts-open-one',d.getAttribute('data-cohort')); else if(localStorage.getItem('closing-line-cohorts-open-one')===d.getAttribute('data-cohort'))localStorage.removeItem('closing-line-cohorts-open-one'); }catch(_){}
@@ -1078,7 +1080,6 @@ function render(){
   h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Today’s plays <small>highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)'+(picksData&&picksData.playsSource==='code'?' · picked by code since Sep 4':'')+'</small></h2>'
     +'<p class="legend" style="margin:0 0 6px"><span style="color:#2ec4b6">▌ teal edge</span> = crowd held 70%+ of tickets on the side we fade &nbsp;·&nbsp; <span style="color:#e05297">▌ pink edge</span> = the money is under 55% on our side (the crowd still holds most of it) &nbsp;·&nbsp; <span style="color:#e0b400">▌ gold edge</span> = moneyline on the dog &nbsp;·&nbsp; <span style="color:#a56cff">▌ purple edge</span> = the book moved the line toward our side against the ticket majority (sharp money with us) &nbsp;·&nbsp; several edges = several. Each cohort has its own view under the Cohorts pill and a row on the Record tab.</p>';
   /* Carl 2026-09-04: make the state obvious — clean fades first, then weakened, then DO NOT BET; soonest kickoff first inside each group */
-  function playState(p){ var L=p.liveCheck; if(isNoBetLive(p))return 2; if(L&&!L.ok&&L.why==='faded'&&(!p.result||p.result==='pending'))return 1; return 0; }
   var GROUPS=[[0,''],[1,'<h3 class="subhead warn">Signal weakened on the latest read — crowd still on the other side, but below the 60 / 8 bar</h3>'],[2,'<h3 class="subhead bad">DO NOT BET — the crowd has flipped to our side</h3>']];
   /* Carl 2026-09-04: DATE first — under each day: strong fades, then that day's weakened ones, then that day's DO NOT BET; soonest first inside each */
   function dayLabel(p){ var d=gameDate(p); if(!d)return 'Date TBD'; return d.toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',weekday:'long',month:'short',day:'numeric'}); }
