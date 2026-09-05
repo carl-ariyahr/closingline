@@ -903,6 +903,13 @@ function confirmChip(p){
   if(p.kind&&p.kind!=='fade')return '';
   if(p.result&&p.result!=='pending')return '';
   var unk='<span class="cchip unconfirmed" title="No second-source data loaded for this game yet">◌ unconfirmed</span>';
+  /* code-written picks carry the server's own Action Network read (refreshed hourly) — use it before any name matching */
+  if(typeof p.external==='string'&&p.external){
+    var ex=p.external, srcN='Action';
+    if(ex.charAt(0)==='✓')return '<span class="cchip confirmed" title="'+esc(ex)+'">✓ '+srcN+' confirms</span>';
+    if(ex.charAt(0)==='◌')return '<span class="cchip unconfirmed" title="'+esc(ex)+'">◌ '+srcN+' split</span>';
+    return '<span class="cchip caution" title="'+esc(ex)+'">⚠ caution · '+srcN+' disagrees</span>';
+  }
   var pub=publicSideOf(p); if(!pub)return unk;
   var mk=/total/i.test(p.type||'')?'Total':/money/i.test(p.type||'')?'ML':/spread/i.test(p.type||'')?'Spread':null; if(!mk)return unk;
   var gm=String(p.game||'').match(/^(.*?)\s+@\s+(.*?)\s+[—-]/); if(!gm)return unk;
@@ -910,8 +917,12 @@ function confirmChip(p){
   var rows=extData.rows,k,matches=[];
   /* match the PAIR of nicknames regardless of order — a source (or an old AI routine) may list home/away swapped */
   var want=[lastWordKey(away),lastWordKey(home)].sort().join('~');
+  /* college names differ between sources ("Tennessee ST" vs "Tennessee State Tigers"): a team also matches on its first word when the nickname doesn't */
+  function fw(s){return String(s||'').trim().split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]/g,'')}
+  function teamEq(a,b){return lastWordKey(a)===lastWordKey(b)||(fw(a).length>=4&&fw(a)===fw(b))}
+  function pairEq(r){return (teamEq(r.away,away)&&teamEq(r.home,home))||(teamEq(r.away,home)&&teamEq(r.home,away))}
   for(k in rows){var r=rows[k];
-    if(r.league===sport&&r.market===mk&&r.date===date&&[lastWordKey(r.away),lastWordKey(r.home)].sort().join('~')===want)matches.push(r)}
+    if(r.league===sport&&r.market===mk&&r.date===date&&([lastWordKey(r.away),lastWordKey(r.home)].sort().join('~')===want||pairEq(r)))matches.push(r)}
   if(matches.length!==1)return unk; /* nothing loaded, or a doubleheader we can't tell apart */
   var row=matches[0]; if(!row.a||!row.b||row.a.bets==null||row.b.bets==null)return unk;
   var src=row.source==='actionnetwork'?'Action':row.source;
