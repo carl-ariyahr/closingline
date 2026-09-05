@@ -1095,6 +1095,7 @@ function render(){
       (co.indexOf('thinmoney')<0?got:miss).push('money '+(H!=null?(100-H)+'%':'55%+')+' ours');
       if(ml)(co.indexOf('dogml')>=0?got:miss).push('dog price');
       return {got:got,miss:miss,n:got.length,total:got.length+miss.length,D:D||0}; }
+    var seenKey={}; cands=cands.filter(function(p){ var k=String(p.pick)+'|'+String(p.game||'').replace(/\s*—.*$/,''); if(seenKey[k])return false; seenKey[k]=1; return true; }); /* the same play on two cards shows once */
     cands=cands.map(function(p){return {p:p,b:boxes(p)}}).sort(function(a,b){ if(b.b.n!==a.b.n)return b.b.n-a.b.n; return b.b.D-a.b.D; }).slice(0,5);
     if(!cands.length)return;
     h+='<div class="bestbox"><h3>\u2605 Best plays today <small>today\u2019s games only \u00b7 clean fades ranked by variables lined up, then gap</small></h3>';
