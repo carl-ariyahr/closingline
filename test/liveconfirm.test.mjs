@@ -149,9 +149,12 @@ test('DO NOT BET: only a FLIPPED read at kickoff makes a play a no-bet; faded an
 });
 
 test('cohorts: crowd 70%+ from the latest read (else posting read / signal text); dog moneyline from the price', () => {
-  assert.deepEqual(cohortsOf({ type: 'Moneyline', pick: 'Athletics ML', line: '+184', liveCheck: { T: 89 } }), ['crowd70', 'dogml']);
+  assert.deepEqual(cohortsOf({ type: 'Moneyline', pick: 'Athletics ML', line: '+184', liveCheck: { T: 89, H: 30 } }), ['crowd70', 'dogml']);
+  assert.deepEqual(cohortsOf({ type: 'Moneyline', pick: 'Athletics ML', line: '+184', liveCheck: { T: 89, H: 52 } }), ['crowd70', 'thinmoney', 'dogml']); // our side has only 48% of the money
+  assert.deepEqual(cohortsOf({ type: 'Total', pick: 'Under 8', T: 64, H: 45 }), []);   // our money exactly 55% → not thin
+  assert.deepEqual(cohortsOf({ type: 'Total', pick: 'Under 8', T: 64, H: 46 }), ['thinmoney']);
   assert.deepEqual(cohortsOf({ type: 'Moneyline', pick: 'Baltimore Orioles ML +100', T: 64 }), []);           // +100 is not a dog, 64% is not 70
   assert.deepEqual(cohortsOf({ type: 'Total', pick: 'Under 8', liveCheck: { T: 66 }, T: 75 }), []);           // latest read wins over the posting read
-  assert.deepEqual(cohortsOf({ type: 'Moneyline', pick: 'Athletics +184', signal: 'PUBLIC 92% of tickets on SEA Mariners but only 62% of the money' }), ['crowd70', 'dogml']); // AI-written card
+  assert.deepEqual(cohortsOf({ type: 'Moneyline', pick: 'Athletics +184', signal: 'PUBLIC 92% of tickets on SEA Mariners but only 62% of the money' }), ['crowd70', 'thinmoney', 'dogml']); // AI-written card: crowd keeps 62% of the money
   assert.deepEqual(cohortsOf({ type: 'Moneyline', pick: 'Kansas City Royals ML -121', line: '-121', T: 80 }), ['crowd70']); // favorite
 });

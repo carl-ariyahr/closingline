@@ -146,11 +146,8 @@
   .cchip.contention{background:rgba(120,90,220,.16);color:#b8a6ea;border-color:rgba(120,90,220,.55)}
   .chips{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}
   /* cohort stripes on the row edge (Carl 2026-09-05): teal = crowd 70%+, gold = dog moneyline, both = two stripes */
-  .pickrow.co-crowd70{border-left:5px solid #2ec4b6;padding-left:10px;background:linear-gradient(90deg,rgba(46,196,182,.08),transparent 40%)}
-  .pickrow.co-dogml{border-left:5px solid #e0b400;padding-left:10px;background:linear-gradient(90deg,rgba(224,180,0,.08),transparent 40%)}
-  .pickrow.co-crowd70.co-dogml{border-left:5px solid #2ec4b6;box-shadow:inset 5px 0 0 #2ec4b6, inset 10px 0 0 #e0b400;padding-left:16px;background:linear-gradient(90deg,rgba(46,196,182,.08),rgba(224,180,0,.06) 30%,transparent 55%)}
+  /* cohort stripes are painted inline from the cohort list: teal crowd 70%+, pink money < 55% on our side, gold dog moneyline */
   .cohort{font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;margin-top:3px}
-  .cohort .co70{color:#2ec4b6} .cohort .codog{color:#e0b400}
   .nobet{font-family:var(--disp);font-weight:800;font-size:13px;letter-spacing:.08em;background:#e05252;color:#fff;border-radius:6px;padding:6px 12px;flex:none;white-space:nowrap;box-shadow:0 0 0 2px rgba(224,82,82,.35)}
   .nobet.done{background:rgba(224,82,82,.16);color:#e05252;border:1px solid #e05252;font-size:11px;box-shadow:none}
   /* 98/2 read — posted at its tier, with an asterisk */
@@ -682,9 +679,10 @@ function ledgerCounted(){ return ledgerPicks().filter(function(p){return !p.noBe
    Graded picks carry p.cohorts from the pipeline; live ones are computed here the same way. */
 function cohortsOf(p){
   if(Array.isArray(p.cohorts))return p.cohorts;
-  var out=[]; var T=(p.liveCheck&&p.liveCheck.T!=null)?p.liveCheck.T:p.T;
-  if(T==null){var m=String(p.signal||'').match(/(\d{1,3})%\s+(?:of\s+)?tickets/i); if(m)T=Number(m[1]);}
+  var out=[]; var T=(p.liveCheck&&p.liveCheck.T!=null)?p.liveCheck.T:p.T, H=(p.liveCheck&&p.liveCheck.H!=null)?p.liveCheck.H:p.H;
+  if(T==null||H==null){var m=String(p.signal||'').match(/(\d{1,3})%\s+(?:of\s+)?tickets[^·]*?(\d{1,3})%\s+(?:of\s+the\s+)?money/i); if(m){if(T==null)T=Number(m[1]);if(H==null)H=Number(m[2]);}}
   if(T!=null&&T>=70)out.push('crowd70');
+  if(H!=null&&(100-H)<55)out.push('thinmoney');
   var ml=/money/i.test(p.type||'')||/\bML\b/.test(String(p.pick||''));
   if(ml){var pr=p.line!=null?parseFloat(String(p.line)):parseFloat((String(p.pick||'').match(/([+-]\d{3,4})\s*$/)||[])[1]); if(isFinite(pr)&&pr>100)out.push('dogml');}
   return out;
@@ -731,6 +729,8 @@ function tabRecordsHTML(){
     ['Phil Steele (PS)',function(p,id){return id==='patrick-variables'&&p.kind==='ps'}],
     ['Cohort: crowd 70%+ (plays)',function(p,id){return !!p.playsShownAt&&!p.noBet&&cohortsOf(p).indexOf('crowd70')>=0}],
     ['Cohort: dog moneylines (plays)',function(p,id){return !!p.playsShownAt&&!p.noBet&&cohortsOf(p).indexOf('dogml')>=0}],
+    ['Cohort: money < 55% on our side (plays)',function(p,id){return !!p.playsShownAt&&!p.noBet&&cohortsOf(p).indexOf('thinmoney')>=0}],
+    ['Cohort: money ≥ 55% on our side (plays)',function(p,id){return !!p.playsShownAt&&!p.noBet&&cohortsOf(p).indexOf('thinmoney')<0}],
     ['R&amp;D',function(p,id){return id==='rnd-fade'}],
     ['NHL',function(p,id){return !PAPER[id]&&sportTag(p)==='NHL'}],
     ['Fade system',function(p,id){return !PAPER[id]&&!ANGLE[id]&&(!p.kind||p.kind==='fade')}],
@@ -1002,11 +1002,13 @@ function render(){
         :L.why==='faded'?'<span class="cchip lcwarn" title="The crowd is still on the other side, but on the latest read the setup no longer clears the bar (crowd under 60% of tickets, or the money gap under 8). Still a bet by your rule, still counts — just weaker than when it was posted.">⚠ WEAKENED'+nums+' · '+esc(when)+'</span>':'';
     }
     var codeB=p.src==='code'?'<span class="kbadge codepick" title="Picked by the code pipeline from the VSiN board (tickets vs money), not by an AI">⚙ code</span>':(p.aiNote?'<span class="kbadge ainote" title="AI-written note — not a play since the Sep 4 cutover">AI note</span>':'');
-    var co=cohortsOf(p); var coCls=co.map(function(c){return ' co-'+c}).join('');
-    var coT=(p.liveCheck&&p.liveCheck.T!=null)?p.liveCheck.T:p.T;
-    var coNote=co.length?'<div class="cohort">'+co.map(function(c){return c==='crowd70'?'<span class="co70">▌ crowd '+(coT!=null?esc(String(coT))+'%':'70%+')+' of tickets</span>':'<span class="codog">▌ dog moneyline</span>'}).join(' ')+'</div>':'';
+    var co=cohortsOf(p); var COC={crowd70:'#2ec4b6',thinmoney:'#e05297',dogml:'#e0b400'};
+    var coStyle=co.length?' style="padding-left:'+(6+5*co.length)+'px;box-shadow:'+co.map(function(c,i){return 'inset '+(5*(i+1))+'px 0 0 '+COC[c]}).join(',')+';background:linear-gradient(90deg,'+COC[co[0]]+'14,transparent 40%)"':'';
+    var coCls=co.map(function(c){return ' co-'+c}).join('');
+    var coT=(p.liveCheck&&p.liveCheck.T!=null)?p.liveCheck.T:p.T, coH=(p.liveCheck&&p.liveCheck.H!=null)?p.liveCheck.H:p.H;
+    var coNote=co.length?'<div class="cohort">'+co.map(function(c){return c==='crowd70'?'<span style="color:#2ec4b6">▌ crowd '+(coT!=null?esc(String(coT))+'%':'70%+')+' of tickets</span>':c==='thinmoney'?'<span style="color:#e05297">▌ money only '+(coH!=null?esc(String(100-coH))+'%':'<55%')+' on our side</span>':'<span style="color:#e0b400">▌ dog moneyline</span>'}).join(' ')+'</div>':'';
     var kbTitle=p.kind==='ps'?' title="Phil Steele Inside the Pressbox '+(p.psWho==='computer'?'Computer Best Bet':'Phil\u2019s Best Bet')+(p.week?' \u00b7 Week '+esc(String(p.week)):'')+'"':p.kind==='yoyo'?' title="The line went from one number to another and back (VSiN/DK). Flag only \u2014 not a bet, not graded."':'';
-    return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+coCls+'"><span class="kbadge '+kb+'"'+kbTitle+'>'+kl+'</span>'+xref+codeB+stack+f98
+    return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+coCls+'"'+coStyle+'><span class="kbadge '+kb+'"'+kbTitle+'>'+kl+'</span>'+xref+codeB+stack+f98
       +'<div class="pmain">'+sp+'<b>'+esc(p.pick)+(f98?'<sup class="ast">*</sup>':'')+'</b> · '+esc(gameTxt)+stTxt+pushNote+'<div class="psig">'+esc(p.signal||'')+'</div>'+coNote+'</div>'
       +res
       +'<span class="chips">'+lc+nb+confirmChip(p)+contChip(p)+'</span>'
@@ -1055,7 +1057,7 @@ function render(){
   function isFeatured(p){return p.featured||p.status==='play'||p.stack}
   if(cardSub==='plays'){
   h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Today’s plays <small>highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)'+(picksData&&picksData.playsSource==='code'?' · picked by code since Sep 4':'')+'</small></h2>'
-    +'<p class="legend" style="margin:0 0 6px"><span style="color:#2ec4b6">▌ teal edge</span> = crowd held 70%+ of tickets on the side we fade &nbsp;·&nbsp; <span style="color:#e0b400">▌ gold edge</span> = moneyline on the dog &nbsp;·&nbsp; both edges = both. Tracked as cohorts on the Record tab.</p>';
+    +'<p class="legend" style="margin:0 0 6px"><span style="color:#2ec4b6">▌ teal edge</span> = crowd held 70%+ of tickets on the side we fade &nbsp;·&nbsp; <span style="color:#e05297">▌ pink edge</span> = the money is under 55% on our side (the crowd still holds most of it) &nbsp;·&nbsp; <span style="color:#e0b400">▌ gold edge</span> = moneyline on the dog &nbsp;·&nbsp; several edges = several. Tracked as cohorts on the Record tab.</p>';
   /* Carl 2026-09-04: make the state obvious — clean fades first, then weakened, then DO NOT BET; soonest kickoff first inside each group */
   function playState(p){ var L=p.liveCheck; if(isNoBetLive(p))return 2; if(L&&!L.ok&&L.why==='faded'&&(!p.result||p.result==='pending'))return 1; return 0; }
   var GROUPS=[[0,''],[1,'<h3 class="subhead warn">Signal weakened on the latest read — crowd still on the other side, but below the 60 / 8 bar</h3>'],[2,'<h3 class="subhead bad">DO NOT BET — the crowd has flipped to our side</h3>']];
