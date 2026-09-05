@@ -1186,7 +1186,7 @@ function render(){
       h+='<p class="cardnote"'+(renderedMain++?' style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px"':'')+'><b>'+esc(card.title||'')+'</b>'+(card.note?' — '+esc(card.note):'')+'</p>';
       h+=pickList(rest,card.id);
     });
-    if(!renderedMain)h+='<p class="none-msg">Everything on the board is up in Today’s plays.</p>';
+    if(!renderedMain)h+='<p class="none-msg">Everything on the board is up in Carl’s plays.</p>';
   }
   h+='</section>';
 
@@ -1354,7 +1354,7 @@ function render(){
     if(rdCard.note)h+='<p class="cardnote">'+esc(rdCard.note)+'</p>';
     h+=pickList(rdRest,'roaddog-angle');
   }else{
-    h+='<p class="none-msg">No qualifying moves right now'+(rdCard&&rdCard.picks.some(isTop)?' — an active one is up in Today\u2019s plays':'')+' — lines have to actually move for this one.</p>';
+    h+='<p class="none-msg">No qualifying moves right now'+(rdCard&&rdCard.picks.some(isTop)?' — an active one is up in Carl\u2019s plays':'')+' — lines have to actually move for this one.</p>';
   }
   h+='</section>';
   }
