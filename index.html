@@ -154,6 +154,9 @@
   .kbadge.flag98{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(233,169,74,.5)}
   .kbadge.ps{background:rgba(255,140,0,.18);color:#ff9a2e;border:1px solid rgba(255,140,0,.65)}
   .kbadge.yoyo{background:rgba(160,90,255,.2);color:#cdb0ff;border:1px solid rgba(160,90,255,.7)}
+  .kbadge.sharp{background:rgba(165,108,255,.18);color:#c9a6ff;border:1px solid rgba(165,108,255,.6)}
+  .cohortcard{border-left:4px solid var(--line);padding-left:10px;margin:14px 0}
+  .cohortcard h3{margin:0 0 4px;font-size:14px} .cohortcard .rec{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:6px}
 .kbadge.codepick{background:#0f3d2e;color:#7ee2b8;border:1px solid #1f6b4f}
 .kbadge.ainote{background:#2a2a2a;color:#9a9a9a;border:1px solid #444}
   sup.ast{color:var(--amber);font-weight:700;font-size:.8em;margin-left:1px}
@@ -683,6 +686,7 @@ function cohortsOf(p){
   if(T==null||H==null){var m=String(p.signal||'').match(/(\d{1,3})%\s+(?:of\s+)?tickets[^·]*?(\d{1,3})%\s+(?:of\s+the\s+)?money/i); if(m){if(T==null)T=Number(m[1]);if(H==null)H=Number(m[2]);}}
   if(T!=null&&T>=70)out.push('crowd70');
   if(H!=null&&(100-H)<55)out.push('thinmoney');
+  if(p.sharpMove)out.push('promove');
   var ml=/money/i.test(p.type||'')||/\bML\b/.test(String(p.pick||''));
   if(ml){var pr=p.line!=null?parseFloat(String(p.line)):parseFloat((String(p.pick||'').match(/([+-]\d{3,4})\s*$/)||[])[1]); if(isFinite(pr)&&pr>100)out.push('dogml');}
   return out;
@@ -731,6 +735,8 @@ function tabRecordsHTML(){
     ['Cohort: dog moneylines (plays)',function(p,id){return !!p.playsShownAt&&!p.noBet&&cohortsOf(p).indexOf('dogml')>=0}],
     ['Cohort: money < 55% on our side (plays)',function(p,id){return !!p.playsShownAt&&!p.noBet&&cohortsOf(p).indexOf('thinmoney')>=0}],
     ['Cohort: money ≥ 55% on our side (plays)',function(p,id){return !!p.playsShownAt&&!p.noBet&&cohortsOf(p).indexOf('thinmoney')<0}],
+    ['Cohort: pros moved the line our way (plays)',function(p,id){return !!p.playsShownAt&&!p.noBet&&cohortsOf(p).indexOf('promove')>=0}],
+    ['Sharp moves (tail, paper)',function(p,id){return id==='sharp-moves'}],
     ['R&amp;D',function(p,id){return id==='rnd-fade'}],
     ['NHL',function(p,id){return !PAPER[id]&&sportTag(p)==='NHL'}],
     ['Fade system',function(p,id){return !PAPER[id]&&!ANGLE[id]&&(!p.kind||p.kind==='fade')}],
@@ -972,8 +978,8 @@ function render(){
   }
   allCards.forEach(function(cd){cd.picks.forEach(function(p){p._sport=sportOf(p,cd);p._cardId=cd.id})});
   function pickRow(p){
-    var kb=['fade','rlm','wcoast','roaddog','homedog','injury','steam','latepub','ufc','ps','yoyo'].indexOf(p.kind)>=0?p.kind:'sharp';
-    var kl={fade:'Fade',rlm:'Line move',wcoast:'West Coast',roaddog:'Road dog 1H',homedog:'Home dog 1H',injury:'\u26a0 Injury',steam:'Early steam',latepub:'Late/public',ufc:'UFC',ps:(p.psWho==='computer'?'PS\u00b7C':'PS'),yoyo:'Yo-Yo'}[p.kind]||'Sharp $';
+    var kb=['fade','rlm','wcoast','roaddog','homedog','injury','steam','latepub','ufc','ps','yoyo','sharp'].indexOf(p.kind)>=0?p.kind:'sharp';
+    var kl={fade:'Fade',rlm:'Line move',wcoast:'West Coast',roaddog:'Road dog 1H',homedog:'Home dog 1H',injury:'\u26a0 Injury',steam:'Early steam',latepub:'Late/public',ufc:'UFC',ps:(p.psWho==='computer'?'PS\u00b7C':'PS'),yoyo:'Yo-Yo',sharp:'Sharp move'}[p.kind]||'Sharp $';
     /* Patrick's Variables cross-reference (Carl 2026-09-04): PS = on Phil Steele's Pressbox sheet (orange; PS·C = his computer), Yo-Yo = the line went out and came back (purple) */
     var xref=(p.psFlag?'<span class="kbadge ps" title="This game is a Phil Steele Pressbox '+(p.psFlag==='computer'?'Computer':'Phil')+' Best Bet this week">'+(p.psFlag==='computer'?'PS\u00b7C':'PS')+'</span>':'')
       +(p.yoyoFlag?'<span class="kbadge yoyo" title="Yo-yo line: '+esc(p.yoyoFlag)+'">Yo-Yo</span>':'');
@@ -1002,11 +1008,11 @@ function render(){
         :L.why==='faded'?'<span class="cchip lcwarn" title="The crowd is still on the other side, but on the latest read the setup no longer clears the bar (crowd under 60% of tickets, or the money gap under 8). Still a bet by your rule, still counts — just weaker than when it was posted.">⚠ WEAKENED'+nums+' · '+esc(when)+'</span>':'';
     }
     var codeB=p.src==='code'?'<span class="kbadge codepick" title="Picked by the code pipeline from the VSiN board (tickets vs money), not by an AI">⚙ code</span>':(p.aiNote?'<span class="kbadge ainote" title="AI-written note — not a play since the Sep 4 cutover">AI note</span>':'');
-    var co=cohortsOf(p); var COC={crowd70:'#2ec4b6',thinmoney:'#e05297',dogml:'#e0b400'};
+    var co=cohortsOf(p); var COC={crowd70:'#2ec4b6',thinmoney:'#e05297',dogml:'#e0b400',promove:'#a56cff'};
     var coStyle=co.length?' style="padding-left:'+(6+5*co.length)+'px;box-shadow:'+co.map(function(c,i){return 'inset '+(5*(i+1))+'px 0 0 '+COC[c]}).join(',')+';background:linear-gradient(90deg,'+COC[co[0]]+'14,transparent 40%)"':'';
     var coCls=co.map(function(c){return ' co-'+c}).join('');
     var coT=(p.liveCheck&&p.liveCheck.T!=null)?p.liveCheck.T:p.T, coH=(p.liveCheck&&p.liveCheck.H!=null)?p.liveCheck.H:p.H;
-    var coNote=co.length?'<div class="cohort">'+co.map(function(c){return c==='crowd70'?'<span style="color:#2ec4b6">▌ crowd '+(coT!=null?esc(String(coT))+'%':'70%+')+' of tickets</span>':c==='thinmoney'?'<span style="color:#e05297">▌ money only '+(coH!=null?esc(String(100-coH))+'%':'<55%')+' on our side</span>':'<span style="color:#e0b400">▌ dog moneyline</span>'}).join(' ')+'</div>':'';
+    var coNote=co.length?'<div class="cohort">'+co.map(function(c){return c==='crowd70'?'<span style="color:#2ec4b6">▌ crowd '+(coT!=null?esc(String(coT))+'%':'70%+')+' of tickets</span>':c==='thinmoney'?'<span style="color:#e05297">▌ money only '+(coH!=null?esc(String(100-coH))+'%':'<55%')+' on our side</span>':c==='promove'?'<span style="color:#a56cff">▌ pros moved the line our way: '+esc(String(p.sharpMove||''))+'</span>':'<span style="color:#e0b400">▌ dog moneyline</span>'}).join(' ')+'</div>':'';
     var kbTitle=p.kind==='ps'?' title="Phil Steele Inside the Pressbox '+(p.psWho==='computer'?'Computer Best Bet':'Phil\u2019s Best Bet')+(p.week?' \u00b7 Week '+esc(String(p.week)):'')+'"':p.kind==='yoyo'?' title="The line went from one number to another and back (VSiN/DK). Flag only \u2014 not a bet, not graded."':'';
     return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+coCls+'"'+coStyle+'><span class="kbadge '+kb+'"'+kbTitle+'>'+kl+'</span>'+xref+codeB+stack+f98
       +'<div class="pmain">'+sp+'<b>'+esc(p.pick)+(f98?'<sup class="ast">*</sup>':'')+'</b> · '+esc(gameTxt)+stTxt+pushNote+'<div class="psig">'+esc(p.signal||'')+'</div>'+coNote+'</div>'
@@ -1031,7 +1037,7 @@ function render(){
     return out;
   }
   function isTop(p){
-    if(p._cardId==='patrick-variables'||p._cardId==='rnd-fade'||p._cardId==='ufc-card'||p._cardId==='auto-alerts'||p._cardId==='wcoast-angle')return false; /* experimental / R&D / UFC / alerts / deleted angle never surface on the front page */
+    if(p._cardId==='patrick-variables'||p._cardId==='rnd-fade'||p._cardId==='ufc-card'||p._cardId==='auto-alerts'||p._cardId==='wcoast-angle'||p._cardId==='sharp-moves')return false; /* experimental / R&D / UFC / alerts / deleted angle / sharp paper never surface on the front page */
     if(p.status==='dead'||p.status==='logged'||p.status==='alert')return false; /* retired, already bet, or a DO-NOT-BET alert — even if stacked */
     if(picksData&&picksData.playsSource==='code'&&p.src!=='code'&&!p.playsShownAt)return false; /* Carl 2026-09-04: Today's Plays come from the code pipeline; AI-written picks are notes unless already shown */
     if(!((p.status==='play'||p.stack||p.playsShownAt)&&(!p.result||p.result==='pending')))return false;
@@ -1050,14 +1056,14 @@ function render(){
 
   /* theory sub-tabs */
   /* UFC / Line moves / Lines pills removed per Carl 2026-09-01 \u2014 section code kept below (shelved), data still collected in the background */
-  var SUBS=[['plays','Plays'+(topPicks.length?' ('+topPicks.length+')':'')],['patrick','Patrick\u2019s Variables'],['rnd','R&amp;D'],['nhl','NHL'],['fade','Fade system'],['roaddog','Road dogs 1H'],['homedog','Home dogs 1H'],['sentiment','Sentiment']];
+  var SUBS=[['plays','Plays'+(topPicks.length?' ('+topPicks.length+')':'')],['cohorts','Cohorts'],['sharp','Sharp moves'],['patrick','Patrick\u2019s Variables'],['rnd','R&amp;D'],['nhl','NHL'],['fade','Fade system'],['roaddog','Road dogs 1H'],['homedog','Home dogs 1H'],['sentiment','Sentiment']];
   h+='<nav class="subtabs">'+SUBS.map(function(t){return '<button class="stab'+(cardSub===t[0]?' on':'')+'" data-action="subtab" data-sub="'+t[0]+'">'+t[1]+'</button>'}).join('')+'</nav>';
 
   /* 1 — today's plays (soonest kickoff first, only games within 2 days) */
   function isFeatured(p){return p.featured||p.status==='play'||p.stack}
   if(cardSub==='plays'){
   h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Today’s plays <small>highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)'+(picksData&&picksData.playsSource==='code'?' · picked by code since Sep 4':'')+'</small></h2>'
-    +'<p class="legend" style="margin:0 0 6px"><span style="color:#2ec4b6">▌ teal edge</span> = crowd held 70%+ of tickets on the side we fade &nbsp;·&nbsp; <span style="color:#e05297">▌ pink edge</span> = the money is under 55% on our side (the crowd still holds most of it) &nbsp;·&nbsp; <span style="color:#e0b400">▌ gold edge</span> = moneyline on the dog &nbsp;·&nbsp; several edges = several. Tracked as cohorts on the Record tab.</p>';
+    +'<p class="legend" style="margin:0 0 6px"><span style="color:#2ec4b6">▌ teal edge</span> = crowd held 70%+ of tickets on the side we fade &nbsp;·&nbsp; <span style="color:#e05297">▌ pink edge</span> = the money is under 55% on our side (the crowd still holds most of it) &nbsp;·&nbsp; <span style="color:#e0b400">▌ gold edge</span> = moneyline on the dog &nbsp;·&nbsp; <span style="color:#a56cff">▌ purple edge</span> = the book moved the line toward our side against the ticket majority (sharp money with us) &nbsp;·&nbsp; several edges = several. Each cohort has its own view under the Cohorts pill and a row on the Record tab.</p>';
   /* Carl 2026-09-04: make the state obvious — clean fades first, then weakened, then DO NOT BET; soonest kickoff first inside each group */
   function playState(p){ var L=p.liveCheck; if(isNoBetLive(p))return 2; if(L&&!L.ok&&L.why==='faded'&&(!p.result||p.result==='pending'))return 1; return 0; }
   var GROUPS=[[0,''],[1,'<h3 class="subhead warn">Signal weakened on the latest read — crowd still on the other side, but below the 60 / 8 bar</h3>'],[2,'<h3 class="subhead bad">DO NOT BET — the crowd has flipped to our side</h3>']];
@@ -1107,7 +1113,7 @@ function render(){
     var pct=(rec.all.w+rec.all.l)>0?' ('+((rec.all.w/(rec.all.w+rec.all.l))*100).toFixed(0)+'% · '+netUnits(rec.all.w,rec.all.l)+' at −110)':'';
     h+='<p class="sysrec">System record — every pick graded, bet or not: <b>'+rfmt(rec.all)+'</b>'+pct+' · plays <b>'+rfmt(rec.play)+'</b> ('+netUnits(rec.play.w,rec.play.l)+') · leans/watches <b>'+rfmt(rec.other)+'</b> ('+netUnits(rec.other.w,rec.other.l)+')</p>';
   }
-  var mainCards=allCards.filter(function(cd){return cd.id!=='wcoast-angle'&&cd.id!=='roaddog-angle'&&cd.id!=='homedog-angle'&&cd.id!=='patrick-variables'&&cd.id!=='auto-alerts'&&cd.id!=='rnd-fade'&&cd.id!=='ufc-card'});
+  var mainCards=allCards.filter(function(cd){return cd.id!=='wcoast-angle'&&cd.id!=='roaddog-angle'&&cd.id!=='homedog-angle'&&cd.id!=='patrick-variables'&&cd.id!=='auto-alerts'&&cd.id!=='rnd-fade'&&cd.id!=='ufc-card'&&cd.id!=='sharp-moves'});
   var renderedMain=0;
   if(!mainCards.length){
     h+='<p class="none-msg">No picks posted yet — suggestions land here automatically when the numbers qualify.</p>';
@@ -1126,6 +1132,29 @@ function render(){
 
   /* Patrick's Variables — experimental layer on top of the frozen fade formula */
   if(cardSub==='patrick'){
+  /* COHORTS view (Carl 2026-09-05): one section per tracked cohort — its plays-ledger record and today's plays in it */
+  if(cardSub==='cohorts'){
+    var COH=[['crowd70','#2ec4b6','Crowd 70%+ of tickets','The crowd is a real herd on the other side. Best fade bucket so far.'],
+             ['promove','#a56cff','Pros moved the line our way','The book moved the line toward our side against the ticket majority — sharp money confirmed on our side.'],
+             ['thinmoney','#e05297','Money under 55% on our side','You and the book are on the same side; the sharps are not clearly with you. Version 1 of "with Vegas".'],
+             ['dogml','#e0b400','Dog moneylines','Fades that land on the underdog price.']];
+    h+='<section class="panel"><h2>Cohorts <small>every tracked angle in one place \u00b7 record = plays ledger since Sep 2 (shown plays, do-not-bet excluded) \u00b7 list = today\u2019s plays in that cohort</small></h2>';
+    COH.forEach(function(c){
+      var L=ledgerCounted().filter(function(p){return cohortsOf(p).indexOf(c[0])>=0}); var w=0,l=0; L.forEach(function(p){if(p.result==='win')w++;else if(p.result==='loss')l++;});
+      var live=topPicks.filter(function(p){return cohortsOf(p).indexOf(c[0])>=0});
+      h+='<div class="cohortcard" style="border-left-color:'+c[1]+'"><h3 style="color:'+c[1]+'">\u258c '+esc(c[2])+'</h3><div class="rec">record <b>'+w+'\u2013'+l+'</b>'+(w+l?' ('+Math.round(100*w/(w+l))+'% \u00b7 '+netUnits(w,l)+')':'')+' \u00b7 '+live.length+' on today\u2019s plays \u00b7 '+esc(c[3])+'</div>'+(live.length?live.map(pickRow).join(''):'<p class="none-msg">None on the board right now.</p>')+'</div>';
+    });
+    h+='</section>';
+  }
+  /* SHARP MOVES view: reverse line moves the code caught, paper-tracked as "tail the move" */
+  if(cardSub==='sharp'){
+    var shCard=allCards.filter(function(cd){return cd.id==='sharp-moves'})[0]; var shPicks=shCard?sortByGame(shCard.picks):[];
+    var sw=0,sl=0; shPicks.forEach(function(p){if(p.result==='win')sw++;else if(p.result==='loss')sl++;});
+    h+='<section class="panel"><h2>Sharp moves <small>reverse line moves caught by the hourly code read \u2014 the book moved the line toward the side with FEWER tickets, i.e. big money on the unpopular side \u00b7 paper-tracked as \u201ctail the move\u201d \u00b7 games up to 7 days out</small></h2>';
+    if(sw+sl)h+='<p class="sysrec" style="border-left:3px solid #a56cff">Tail-the-move paper record: <b>'+sw+'\u2013'+sl+'</b> ('+netUnits(sw,sl)+' at \u2212110)</p>';
+    h+=shPicks.length?pickList(shPicks,'sharp-moves'):'<p class="none-msg">No reverse line moves on the board yet \u2014 they post the hour a line moves against the ticket majority.</p>';
+    h+='</section>';
+  }
   var pvCard=allCards.filter(function(cd){return cd.id==='patrick-variables'})[0];
   var pvPicks=pvCard?sortByGame(pvCard.picks):[];
   h+='<section class="panel"><h2>Patrick\u2019s Variables <small>experimental \u2014 the frozen fade formula plus new variables \u00b7 injury-driven moves alert \u00b7 early moves tagged steam (tail candidates), late moves tagged public (fade candidates) \u00b7 <span style="color:#ff9a2e">PS</span> = Phil Steele Pressbox best bets (orange; PS\u00b7C = his computer) \u00b7 <span style="color:#cdb0ff">Yo-Yo</span> = a line that went out and came back (purple, flag only) \u00b7 all paper-tracked until the pattern proves out</small></h2>';

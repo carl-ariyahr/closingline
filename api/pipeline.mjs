@@ -15,6 +15,7 @@ import { matchLiveGame, liveCandidates, applyDHTag, liveCheck, applyLiveCheck, a
 import { continuityDecide } from '../lib/continuity.mjs';
 import { syncCodeCard } from '../lib/codecard.mjs';
 import { recordLines, pruneHistory, upsertYoYoPicks, crossReference } from '../lib/yoyo.mjs';
+import { upsertSharpPicks, stampSharpMoves } from '../lib/sharp.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
@@ -409,6 +410,16 @@ export default async function handler(req, res) {
         report.pvCrossRef = crossReference(pv);
         if (report.yoyo.created || report.yoyo.updated || report.pvCrossRef) changed = true;
       }
+      // ---- SHARP MOVES (Carl 2026-09-05: "tail the pros"): reverse line moves → paper card + purple note on live picks ----
+      {
+        let sc = live.cards.find(c => c.id === 'sharp-moves');
+        if (!sc) { sc = { id: 'sharp-moves', title: 'Sharp moves — reverse line moves, paper-tracked (tail the pros)', picks: [] }; live.cards.push(sc); }
+        if (!Array.isArray(sc.picks)) sc.picks = [];
+        report.sharp = upsertSharpPicks(sc, linesDoc.games, startedAt, { todayPT });
+        const livePicks = live.cards.filter(c => /^(slate|code)-/.test(String(c.id))).flatMap(c => c.picks || []).filter(p => !p.result && p.status !== 'dead');
+        report.sharpStamped = stampSharpMoves(livePicks, linesDoc.games);
+        if (report.sharp.created || report.sharp.updated || report.sharpStamped) changed = true;
+      }
       for (const c of live.cards) {
         if (!/^(slate|code)-/.test(String(c.id)) || !Array.isArray(c.picks)) continue;
         for (const lp of c.picks) {
@@ -443,7 +454,7 @@ export default async function handler(req, res) {
       // ---- PLAYS LEDGER stamp (Carl 2026-09-02: "if you show it to me, it needs to be counted") ----
       // Same rule the front page uses for Today's Plays. Once stamped, a pick is counted in the plays
       // record no matter what happens later (faded, retired, whatever). Clean start 2026-09-02.
-      const FRONT_SKIP = new Set(['patrick-variables', 'rnd-fade', 'ufc-card', 'auto-alerts', 'wcoast-angle']);
+      const FRONT_SKIP = new Set(['patrick-variables', 'rnd-fade', 'ufc-card', 'auto-alerts', 'wcoast-angle', 'sharp-moves']);
       report.playsStamped = 0;
       for (const c of live.cards) {
         if (FRONT_SKIP.has(c.id) || !Array.isArray(c.picks)) continue;
@@ -471,6 +482,7 @@ export default async function handler(req, res) {
         for (const lp of c.picks) {
           if (lp.result && lp.result !== 'pending') continue;
           if (lp.status === 'dead' || lp.kind === 'injury' || lp.kind === 'ufc' || lp.kind === 'yoyo') continue;
+          if (lp.kind === 'sharp' && !lp.side) continue;
           const g = parseLiveGame(lp.game, startedAt);
           if (!g?.date || !g.sport || g.date > todayPT) continue;
           if (lp.start && new Date(lp.start) > startedAt) continue;
@@ -485,7 +497,7 @@ export default async function handler(req, res) {
           if (!result) continue;
           lp.result = result; lp.gradedAt = ts; lp.gradedBy = 'code';
           if (noBetAtKickoff(lp)) { lp.noBet = true; lp.noBetAt = lp.liveCheck.ts; } // crowd had flipped at kickoff → not a bet, not counted
-          lp.cohorts = cohortsOf(lp); // tracked cohorts for the Record tab (crowd 70%+, dog moneylines)
+          lp.cohorts = cohortsOf(lp); if (lp.sharpMove && !lp.cohorts.includes('promove')) lp.cohorts.push('promove'); // tracked cohorts for the Record tab
           if (lp.status === 'play' || lp.stack) lp.featured = true;
           report.liveGraded.push({ pick: lp.pick, game: lp.game, result });
           changed = true;
