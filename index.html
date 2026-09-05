@@ -157,6 +157,8 @@
   .kbadge.sharp{background:rgba(165,108,255,.18);color:#c9a6ff;border:1px solid rgba(165,108,255,.6)}
   .cohortcard{border-left:4px solid var(--line);padding-left:10px;margin:14px 0}
   .cohortcard h3{margin:0 0 4px;font-size:14px} .cohortcard .rec{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:6px}
+  .allvars{border:1px solid var(--amber);border-radius:8px;padding:8px 12px;margin:6px 0 14px;background:linear-gradient(90deg,rgba(233,169,74,.08),transparent 60%)}
+  .allvars h3{margin:2px 0 6px;font-size:15px;color:var(--amber)} .allvars h3 small{font-family:var(--mono);font-weight:400;font-size:10.5px;color:var(--muted);margin-left:8px}
   details.cohortcard{border:1px solid var(--line);border-radius:8px;padding:6px 12px;margin:10px 0;background:var(--panel,transparent)}
   details.cohortcard>summary{cursor:pointer;list-style:none;font-family:var(--disp);font-weight:700;font-size:15px;display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;padding:8px 0}
   details.cohortcard[open]>summary{border-bottom:1px solid var(--line);margin-bottom:6px}
@@ -1150,7 +1152,20 @@ function render(){
     h+='<section class="panel"><h2>Cohorts <small>every tracked angle in one place \u00b7 record = plays ledger since Sep 2 (shown plays, do-not-bet excluded) \u00b7 list = today\u2019s plays in that cohort</small></h2>';
     /* ACCORDION (Carl 2026-09-05): every theory starts folded — title, colour and record showing; tap to expand; one open at a time; remembered per device */
     var openOne=null; try{openOne=localStorage.getItem('closing-line-cohorts-open-one')||null}catch(_){}
-    h+='<p class="legend" style="margin:0 0 4px">Tap a theory to open it. Every play carrying that colour on Today\u2019s Plays is listed inside.</p>';
+    /* TOP OF THE TAB (Carl 2026-09-05): plays with EVERY favourable variable lined up — not a category, always visible.
+       Required: still a clean fade on the latest read, crowd 70%+, pros moved the line our way, money 55%+ on our side;
+       a moneyline pick must also be on the dog. */
+    function varsOf(p){ var co=cohortsOf(p); var ml=/money/i.test(p.type||'')||/\bML\b/.test(String(p.pick||'')); var need=['crowd70','promove','strongmoney'].concat(ml?['dogml']:[]);
+      var have={crowd70:co.indexOf('crowd70')>=0,promove:co.indexOf('promove')>=0,strongmoney:co.indexOf('thinmoney')<0,dogml:co.indexOf('dogml')>=0};
+      var missing=need.filter(function(k){return !have[k]}); if(playState(p)!==0)missing.push('clean'); return {need:need,missing:missing}; }
+    var allVars=topPicks.filter(function(p){return varsOf(p).missing.length===0});
+    var oneShort=topPicks.filter(function(p){return varsOf(p).missing.length===1});
+    var NM={crowd70:'crowd under 70%',promove:'no sharp move our way yet',strongmoney:'money under 55% on our side',dogml:'not a dog price',clean:'not a clean fade on the latest read'};
+    h+='<div class="allvars"><h3>\u2605 Every variable lined up <small>clean fade \u00b7 crowd 70%+ \u00b7 pros moved the line our way \u00b7 money 55%+ on our side'+' \u00b7 (moneylines: on the dog)</small></h3>';
+    h+=allVars.length?allVars.map(pickRow).join(''):'<p class="none-msg">None on the board right now \u2014 the sharp-move box is the hard one; it fills as lines move against the public.</p>';
+    if(oneShort.length){ h+='<h4 class="dayhead" style="margin-top:10px">One box short</h4>'+oneShort.map(function(p){ return pickRow(p)+'<div class="cohort" style="margin:-4px 0 8px 12px;color:var(--muted)">missing: '+esc(NM[varsOf(p).missing[0]]||varsOf(p).missing[0])+'</div>'; }).join(''); }
+    h+='</div>';
+    h+='<p class="legend" style="margin:14px 0 4px">Tap a theory to open it. Every play carrying that colour on Today\u2019s Plays is listed inside.</p>';
     COH.forEach(function(c){
       var L=ledgerCounted().filter(function(p){return cohortsOf(p).indexOf(c[0])>=0}); var w=0,l=0; L.forEach(function(p){if(p.result==='win')w++;else if(p.result==='loss')l++;});
       var live=topPicks.filter(function(p){return cohortsOf(p).indexOf(c[0])>=0});
