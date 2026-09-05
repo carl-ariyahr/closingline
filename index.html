@@ -1130,8 +1130,6 @@ function render(){
 
   }
 
-  /* Patrick's Variables — experimental layer on top of the frozen fade formula */
-  if(cardSub==='patrick'){
   /* COHORTS view (Carl 2026-09-05): one section per tracked cohort — its plays-ledger record and today's plays in it */
   if(cardSub==='cohorts'){
     var COH=[['crowd70','#2ec4b6','Crowd 70%+ of tickets','The crowd is a real herd on the other side. Best fade bucket so far.'],
@@ -1155,6 +1153,8 @@ function render(){
     h+=shPicks.length?pickList(shPicks,'sharp-moves'):'<p class="none-msg">No reverse line moves on the board yet \u2014 they post the hour a line moves against the ticket majority.</p>';
     h+='</section>';
   }
+  /* Patrick's Variables — experimental layer on top of the frozen fade formula */
+  if(cardSub==='patrick'){
   var pvCard=allCards.filter(function(cd){return cd.id==='patrick-variables'})[0];
   var pvPicks=pvCard?sortByGame(pvCard.picks):[];
   h+='<section class="panel"><h2>Patrick\u2019s Variables <small>experimental \u2014 the frozen fade formula plus new variables \u00b7 injury-driven moves alert \u00b7 early moves tagged steam (tail candidates), late moves tagged public (fade candidates) \u00b7 <span style="color:#ff9a2e">PS</span> = Phil Steele Pressbox best bets (orange; PS\u00b7C = his computer) \u00b7 <span style="color:#cdb0ff">Yo-Yo</span> = a line that went out and came back (purple, flag only) \u00b7 all paper-tracked until the pattern proves out</small></h2>';
