@@ -158,7 +158,8 @@
   .cohortcard{border-left:4px solid var(--line);padding-left:10px;margin:14px 0}
   .cohortcard h3{margin:0 0 4px;font-size:14px} .cohortcard .rec{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:6px}
   details.daycard{border:1px solid var(--line);border-radius:8px;padding:4px 12px;margin:10px 0}
-  details.daycard>summary{cursor:pointer;list-style:none;display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;padding:8px 0}
+  details.daycard>summary{cursor:pointer;list-style:none;display:block;padding:8px 0;-webkit-tap-highlight-color:rgba(233,169,74,.25)}
+  details.daycard>summary .sumrow{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline}
   details.daycard>summary::-webkit-details-marker{display:none}
   details.daycard>summary::before{content:'\25B8';color:var(--muted);margin-right:2px;font-size:12px}
   details.daycard[open]>summary::before{content:'\25BE'}
@@ -170,7 +171,8 @@
   .allvars{border:1px solid var(--amber);border-radius:8px;padding:8px 12px;margin:6px 0 14px;background:linear-gradient(90deg,rgba(233,169,74,.08),transparent 60%)}
   .allvars h3{margin:2px 0 6px;font-size:15px;color:var(--amber)} .allvars h3 small{font-family:var(--mono);font-weight:400;font-size:10.5px;color:var(--muted);margin-left:8px}
   details.cohortcard{border:1px solid var(--line);border-radius:8px;padding:6px 12px;margin:10px 0;background:var(--panel,transparent)}
-  details.cohortcard>summary{cursor:pointer;list-style:none;font-family:var(--disp);font-weight:700;font-size:15px;display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;padding:8px 0}
+  details.cohortcard>summary{cursor:pointer;list-style:none;font-family:var(--disp);font-weight:700;font-size:15px;display:block;padding:8px 0;-webkit-tap-highlight-color:rgba(233,169,74,.25)}
+  details.cohortcard>summary .sumrow{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline}
   details.cohortcard[open]>summary{border-bottom:1px solid var(--line);margin-bottom:6px}
   details.cohortcard>summary::-webkit-details-marker{display:none}
   details.cohortcard>summary::before{content:'\25B8';color:var(--muted);margin-right:6px;font-size:12px}
@@ -1133,7 +1135,7 @@ function render(){
     days.forEach(function(d){
       var n0=d.picks.filter(function(p){return playState(p)===0}).length, n1=d.picks.filter(function(p){return playState(p)===1}).length, n2=d.picks.filter(function(p){return playState(p)===2}).length;
       var isOpen=(d.iso in dayOpen)?dayOpen[d.iso]:(d.lbl===todayLbl);
-      h+='<details class="daycard" data-day="'+esc(d.iso)+'"'+(isOpen?' open':'')+'><summary><span class="dayname">'+esc(d.lbl)+'</span><span class="daycounts">'+n0+' play'+(n0===1?'':'s')+(n1?' · <span style="color:var(--amber)">'+n1+' weakened</span>':'')+(n2?' · <span style="color:#e05252">'+n2+' do not bet</span>':'')+'</span></summary>';
+      h+='<details class="daycard" data-day="'+esc(d.iso)+'"'+(isOpen?' open':'')+'><summary><span class="sumrow"><span class="dayname">'+esc(d.lbl)+'</span><span class="daycounts">'+n0+' play'+(n0===1?'':'s')+(n1?' · <span style="color:var(--amber)">'+n1+' weakened</span>':'')+(n2?' · <span style="color:#e05252">'+n2+' do not bet</span>':'')+'</span></span></summary>';
       GROUPS.forEach(function(gr){ var ps=d.picks.filter(function(p){return playState(p)===gr[0]}); if(!ps.length)return; h+=gr[1]+ps.map(pickRow).join(''); });
       h+='</details>';
     });
@@ -1222,7 +1224,7 @@ function render(){
         live=live.slice().sort(function(a,b){ var ea=a.sharpEarly?1:0, eb=b.sharpEarly?1:0; if(ea!==eb)return eb-ea; var ha=a.sharpHours||0, hb=b.sharpHours||0; if(ha!==hb)return hb-ha; return 0; });
       }
       var isOpen=openOne===c[0];
-      h+='<details class="cohortcard" data-cohort="'+c[0]+'" style="border-left-color:'+c[1]+'"'+(isOpen?' open':'')+'><summary><span style="color:'+c[1]+'">\u258c '+esc(c[2])+'</span> <span class="rec">record <b>'+w+'\u2013'+l+'</b>'+(w+l?' ('+Math.round(100*w/(w+l))+'% \u00b7 '+netUnits(w,l)+')':'')+' \u00b7 '+live.length+' on Carl\u2019s plays</span></summary>'
+      h+='<details class="cohortcard" data-cohort="'+c[0]+'" style="border-left-color:'+c[1]+'"'+(isOpen?' open':'')+'><summary><span class="sumrow"><span style="color:'+c[1]+'">\u258c '+esc(c[2])+'</span> <span class="rec">record <b>'+w+'\u2013'+l+'</b>'+(w+l?' ('+Math.round(100*w/(w+l))+'% \u00b7 '+netUnits(w,l)+')':'')+' \u00b7 '+live.length+' on Carl\u2019s plays</span></span></summary>'
         +'<div class="rec">'+esc(c[3])+'</div>'+(live.length?live.map(pickRow).join(''):'<p class="none-msg">None on the board right now.</p>')+'</details>';
     });
     h+='</section>';
