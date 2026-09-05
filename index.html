@@ -702,7 +702,7 @@ function ledgerCounted(){ return ledgerPicks().filter(function(p){return !p.noBe
 /* 0 = clean fade on the latest read, 1 = weakened, 2 = DO NOT BET (used by Today's Plays grouping and the Cohorts tab) */
 function playState(p){ var L=p.liveCheck; if(isNoBetLive(p))return 2; if(L&&!L.ok&&L.why==='faded'&&(!p.result||p.result==='pending'))return 1; return 0; }
 document.addEventListener('toggle',function(ev){ var d=ev.target;
-  if(d&&d.matches&&d.matches('details.daycard')){ try{var ds=JSON.parse(localStorage.getItem('closing-line-days-open')||'{}'); ds[d.getAttribute('data-day')]=d.open; localStorage.setItem('closing-line-days-open',JSON.stringify(ds));}catch(_){} return; }
+  if(d&&d.matches&&d.matches('details.daycard')){ (window.__dayOpen||(window.__dayOpen={}))[d.getAttribute('data-day')]=d.open; return; }
   if(!(d&&d.matches&&d.matches('details.cohortcard')))return;
   if(d.open){ document.querySelectorAll('details.cohortcard').forEach(function(o){ if(o!==d&&o.open)o.open=false; }); }
   try{ if(d.open)localStorage.setItem('closing-line-cohorts-open-one',d.getAttribute('data-cohort')); else if(localStorage.getItem('closing-line-cohorts-open-one')===d.getAttribute('data-cohort'))localStorage.removeItem('closing-line-cohorts-open-one'); }catch(_){}
@@ -1128,13 +1128,13 @@ function render(){
   /* Carl 2026-09-04: DATE first — under each day: strong fades, then that day's weakened ones, then that day's DO NOT BET; soonest first inside each */
   function dayLabel(p){ var d=gameDate(p); if(!d)return 'Date TBD'; return d.toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',weekday:'long',month:'short',day:'numeric'}); }
   if(topPicks.length){
-    /* each DATE is an accordion (Carl 2026-09-05): today open by default, other days folded; the header shows the counts; remembered per device */
-    var dayOpen={}; try{dayOpen=JSON.parse(localStorage.getItem('closing-line-days-open')||'{}')}catch(_){}
-    var todayLbl=null; topPicks.forEach(function(p){ if(gameISO(p)===ptISO()&&!todayLbl)todayLbl=dayLabel(p); });
+    /* each DATE is an accordion (Carl 2026-09-05): EVERY day starts folded on a fresh load, including today; the header shows the counts.
+       While the page stays open, a day you expanded stays expanded across the hourly re-render (session only). */
+    var dayOpen=window.__dayOpen||(window.__dayOpen={});
     var days=[]; topPicks.forEach(function(p){ var lbl=dayLabel(p); var d=days.find(function(x){return x.lbl===lbl}); if(!d){d={lbl:lbl,iso:gameISO(p)||lbl,picks:[]};days.push(d);} d.picks.push(p); });
     days.forEach(function(d){
       var n0=d.picks.filter(function(p){return playState(p)===0}).length, n1=d.picks.filter(function(p){return playState(p)===1}).length, n2=d.picks.filter(function(p){return playState(p)===2}).length;
-      var isOpen=(d.iso in dayOpen)?dayOpen[d.iso]:(d.lbl===todayLbl);
+      var isOpen=dayOpen[d.iso]===true;
       h+='<details class="daycard" data-day="'+esc(d.iso)+'"'+(isOpen?' open':'')+'><summary><span class="sumrow"><span class="dayname">'+esc(d.lbl)+'</span><span class="daycounts">'+n0+' play'+(n0===1?'':'s')+(n1?' · <span style="color:var(--amber)">'+n1+' weakened</span>':'')+(n2?' · <span style="color:#e05252">'+n2+' do not bet</span>':'')+'</span></span></summary>';
       GROUPS.forEach(function(gr){ var ps=d.picks.filter(function(p){return playState(p)===gr[0]}); if(!ps.length)return; h+=gr[1]+ps.map(pickRow).join(''); });
       h+='</details>';
