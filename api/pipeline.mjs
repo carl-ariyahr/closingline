@@ -406,6 +406,8 @@ export default async function handler(req, res) {
         let pv = live.cards.find(c => c.id === 'patrick-variables');
         if (!pv) { pv = { id: 'patrick-variables', title: "Patrick's Variables (experimental, paper-traded only)", picks: [] }; live.cards.push(pv); }
         if (!Array.isArray(pv.picks)) pv.picks = [];
+        const pvN = pv.picks.length; pv.picks = pv.picks.filter(p => p.kind !== 'yoyo' || p.result || !linesDoc.games[p.gamecode]?.excluded);
+        if (pv.picks.length !== pvN) changed = true;
         report.yoyo = upsertYoYoPicks(pv, linesDoc.games, startedAt, { todayPT });
         report.pvCrossRef = crossReference(pv);
         if (report.yoyo.created || report.yoyo.updated || report.pvCrossRef) changed = true;
@@ -415,6 +417,8 @@ export default async function handler(req, res) {
         let sc = live.cards.find(c => c.id === 'sharp-moves');
         if (!sc) { sc = { id: 'sharp-moves', title: 'Sharp moves — reverse line moves, paper-tracked (tail the pros)', picks: [] }; live.cards.push(sc); }
         if (!Array.isArray(sc.picks)) sc.picks = [];
+        const beforeN = sc.picks.length; sc.picks = sc.picks.filter(p => p.result || !linesDoc.games[p.gamecode]?.excluded); // drop out-of-scope (FCS-vs-FCS) paper entries
+        if (sc.picks.length !== beforeN) changed = true;
         report.sharp = upsertSharpPicks(sc, linesDoc.games, startedAt, { todayPT });
         const livePicks = live.cards.filter(c => /^(slate|code)-/.test(String(c.id))).flatMap(c => c.picks || []).filter(p => !p.result && p.status !== 'dead');
         report.sharpStamped = stampSharpMoves(livePicks, linesDoc.games);
