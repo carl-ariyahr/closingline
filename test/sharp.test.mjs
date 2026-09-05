@@ -23,6 +23,7 @@ test('reverse line move: line moves toward the side with FEWER tickets', () => {
   const gb = { gamecode: '20260913NFL00001', type: 'Spread', side: 'away' }, sf = { gamecode: '20260913NFL00001', type: 'Spread', side: 'home' };
   assert.equal(stampSharpMoves([gb, sf], h), 1);
   assert.equal(gb.sharpMove, '-3 → -2.5 against 36% of tickets'); assert.equal(sf.sharpMove ?? null, null);
+  assert.equal(gb.sharpEarly, true); assert.equal(gb.sharpHours, 104); // moved Sep 9 noon UTC for a Sep 13 20:25 UTC kickoff
   // after kickoff nothing new is posted
   assert.equal(upsertSharpPicks({ picks: [] }, h, new Date('2026-09-13T21:00:00Z'), {}).created, 0);
 });
