@@ -157,7 +157,9 @@
   .kbadge.sharp{background:rgba(165,108,255,.18);color:#c9a6ff;border:1px solid rgba(165,108,255,.6)}
   .cohortcard{border-left:4px solid var(--line);padding-left:10px;margin:14px 0}
   .cohortcard h3{margin:0 0 4px;font-size:14px} .cohortcard .rec{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:6px}
-  details.cohortcard>summary{cursor:pointer;list-style:none;font-family:var(--disp);font-weight:700;font-size:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;padding:6px 0}
+  details.cohortcard{border:1px solid var(--line);border-radius:8px;padding:6px 12px;margin:10px 0;background:var(--panel,transparent)}
+  details.cohortcard>summary{cursor:pointer;list-style:none;font-family:var(--disp);font-weight:700;font-size:15px;display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;padding:8px 0}
+  details.cohortcard[open]>summary{border-bottom:1px solid var(--line);margin-bottom:6px}
   details.cohortcard>summary::-webkit-details-marker{display:none}
   details.cohortcard>summary::before{content:'\25B8';color:var(--muted);margin-right:6px;font-size:12px}
   details.cohortcard[open]>summary::before{content:'\25BE'}
@@ -683,7 +685,10 @@ function ledgerPicks(){
    stamps noBet and the play is left out of every record count (it still shows, with its result, marked not counted). */
 function isNoBetLive(p){ return !!(p.liveCheck&&!p.liveCheck.ok&&p.liveCheck.why==='flipped'&&(!p.result||p.result==='pending')); }
 function ledgerCounted(){ return ledgerPicks().filter(function(p){return !p.noBet}); }
-document.addEventListener('toggle',function(ev){ var d=ev.target; if(!(d&&d.matches&&d.matches('details.cohortcard')))return; try{var st=JSON.parse(localStorage.getItem('closing-line-cohorts-open')||'{}'); st[d.getAttribute('data-cohort')]=d.open; localStorage.setItem('closing-line-cohorts-open',JSON.stringify(st));}catch(_){} },true);
+document.addEventListener('toggle',function(ev){ var d=ev.target; if(!(d&&d.matches&&d.matches('details.cohortcard')))return;
+  if(d.open){ document.querySelectorAll('details.cohortcard').forEach(function(o){ if(o!==d&&o.open)o.open=false; }); }
+  try{ if(d.open)localStorage.setItem('closing-line-cohorts-open-one',d.getAttribute('data-cohort')); else if(localStorage.getItem('closing-line-cohorts-open-one')===d.getAttribute('data-cohort'))localStorage.removeItem('closing-line-cohorts-open-one'); }catch(_){}
+},true);
 /* Tracked cohorts (Carl 2026-09-05): crowd70 = crowd held 70%+ of tickets on the side we fade; dogml = moneyline on the dog.
    Graded picks carry p.cohorts from the pipeline; live ones are computed here the same way. */
 function cohortsOf(p){
@@ -1143,15 +1148,16 @@ function render(){
              ['thinmoney','#e05297','Money under 55% on our side','You and the book are on the same side; the sharps are not clearly with you. Version 1 of "with Vegas".'],
              ['dogml','#e0b400','Dog moneylines','Fades that land on the underdog price.']];
     h+='<section class="panel"><h2>Cohorts <small>every tracked angle in one place \u00b7 record = plays ledger since Sep 2 (shown plays, do-not-bet excluded) \u00b7 list = today\u2019s plays in that cohort</small></h2>';
-    /* each theory is a collapsible block (Carl 2026-09-05); the name + record stay visible when collapsed; state remembered per device */
-    var openState={}; try{openState=JSON.parse(localStorage.getItem('closing-line-cohorts-open')||'{}')}catch(_){}
+    /* ACCORDION (Carl 2026-09-05): every theory starts folded — title, colour and record showing; tap to expand; one open at a time; remembered per device */
+    var openOne=null; try{openOne=localStorage.getItem('closing-line-cohorts-open-one')||null}catch(_){}
+    h+='<p class="legend" style="margin:0 0 4px">Tap a theory to open it. Every play carrying that colour on Today\u2019s Plays is listed inside.</p>';
     COH.forEach(function(c){
       var L=ledgerCounted().filter(function(p){return cohortsOf(p).indexOf(c[0])>=0}); var w=0,l=0; L.forEach(function(p){if(p.result==='win')w++;else if(p.result==='loss')l++;});
       var live=topPicks.filter(function(p){return cohortsOf(p).indexOf(c[0])>=0});
       if(c[0]==='promove'){ /* early-alerted sharp moves first, earliest first, then soonest kickoff */
         live=live.slice().sort(function(a,b){ var ea=a.sharpEarly?1:0, eb=b.sharpEarly?1:0; if(ea!==eb)return eb-ea; var ha=a.sharpHours||0, hb=b.sharpHours||0; if(ha!==hb)return hb-ha; return 0; });
       }
-      var isOpen=openState[c[0]]!==false;
+      var isOpen=openOne===c[0];
       h+='<details class="cohortcard" data-cohort="'+c[0]+'" style="border-left-color:'+c[1]+'"'+(isOpen?' open':'')+'><summary><span style="color:'+c[1]+'">\u258c '+esc(c[2])+'</span> <span class="rec">record <b>'+w+'\u2013'+l+'</b>'+(w+l?' ('+Math.round(100*w/(w+l))+'% \u00b7 '+netUnits(w,l)+')':'')+' \u00b7 '+live.length+' on today\u2019s plays</span></summary>'
         +'<div class="rec">'+esc(c[3])+'</div>'+(live.length?live.map(pickRow).join(''):'<p class="none-msg">None on the board right now.</p>')+'</details>';
     });
