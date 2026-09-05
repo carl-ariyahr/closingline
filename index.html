@@ -157,6 +157,8 @@
   .kbadge.sharp{background:rgba(165,108,255,.18);color:#c9a6ff;border:1px solid rgba(165,108,255,.6)}
   .cohortcard{border-left:4px solid var(--line);padding-left:10px;margin:14px 0}
   .cohortcard h3{margin:0 0 4px;font-size:14px} .cohortcard .rec{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:6px}
+  .bestbox{border:1px solid var(--amber);border-radius:8px;padding:8px 12px;margin:8px 0 6px;background:linear-gradient(90deg,rgba(233,169,74,.10),transparent 60%)}
+  .bestbox h3{margin:2px 0 6px;font-size:15px;color:var(--amber)} .bestbox h3 small{font-family:var(--mono);font-weight:400;font-size:10.5px;color:var(--muted);margin-left:8px}
   .allvars{border:1px solid var(--amber);border-radius:8px;padding:8px 12px;margin:6px 0 14px;background:linear-gradient(90deg,rgba(233,169,74,.08),transparent 60%)}
   .allvars h3{margin:2px 0 6px;font-size:15px;color:var(--amber)} .allvars h3 small{font-family:var(--mono);font-weight:400;font-size:10.5px;color:var(--muted);margin-left:8px}
   details.cohortcard{border:1px solid var(--line);border-radius:8px;padding:6px 12px;margin:10px 0;background:var(--panel,transparent)}
@@ -1081,6 +1083,24 @@ function render(){
     +'<p class="legend" style="margin:0 0 6px"><span style="color:#2ec4b6">▌ teal edge</span> = crowd held 70%+ of tickets on the side we fade &nbsp;·&nbsp; <span style="color:#e05297">▌ pink edge</span> = the money is under 55% on our side (the crowd still holds most of it) &nbsp;·&nbsp; <span style="color:#e0b400">▌ gold edge</span> = moneyline on the dog &nbsp;·&nbsp; <span style="color:#a56cff">▌ purple edge</span> = the book moved the line toward our side against the ticket majority (sharp money with us) &nbsp;·&nbsp; several edges = several. Each cohort has its own view under the Cohorts pill and a row on the Record tab.</p>';
   /* Carl 2026-09-04: make the state obvious — clean fades first, then weakened, then DO NOT BET; soonest kickoff first inside each group */
   var GROUPS=[[0,''],[1,'<h3 class="subhead warn">Signal weakened on the latest read — crowd still on the other side, but below the 60 / 8 bar</h3>'],[2,'<h3 class="subhead bad">DO NOT BET — the crowd has flipped to our side</h3>']];
+  /* BEST PLAYS TODAY (Carl 2026-09-05): today's games only, clean fades only, ranked by how many favourable variables line up
+     (crowd 70%+, pros moved the line our way, money 55%+ on our side, dog price for moneylines), then by gap. Top 5. */
+  (function(){
+    var tISO=ptISO();
+    var cands=topPicks.filter(function(p){return gameISO(p)===tISO&&playState(p)===0});
+    function boxes(p){ var co=cohortsOf(p); var ml=/money/i.test(p.type||'')||/\bML\b/.test(String(p.pick||'')); var L=p.liveCheck||{}; var T=(L.T!=null?L.T:p.T), H=(L.H!=null?L.H:p.H), D=(L.D!=null?L.D:p.D);
+      var got=[],miss=[];
+      (co.indexOf('crowd70')>=0?got:miss).push('crowd '+(T!=null?T+'%':'70%+'));
+      (co.indexOf('promove')>=0?got:miss).push('sharp move our way');
+      (co.indexOf('thinmoney')<0?got:miss).push('money '+(H!=null?(100-H)+'%':'55%+')+' ours');
+      if(ml)(co.indexOf('dogml')>=0?got:miss).push('dog price');
+      return {got:got,miss:miss,n:got.length,total:got.length+miss.length,D:D||0}; }
+    cands=cands.map(function(p){return {p:p,b:boxes(p)}}).sort(function(a,b){ if(b.b.n!==a.b.n)return b.b.n-a.b.n; return b.b.D-a.b.D; }).slice(0,5);
+    if(!cands.length)return;
+    h+='<div class="bestbox"><h3>\u2605 Best plays today <small>today\u2019s games only \u00b7 clean fades ranked by variables lined up, then gap</small></h3>';
+    cands.forEach(function(c){ h+=pickRow(c.p)+'<div class="cohort" style="margin:-4px 0 8px 12px"><span style="color:var(--amber)">\u2605 '+c.b.n+' of '+c.b.total+' boxes</span> \u00b7 '+esc(c.b.got.join(' \u00b7 '))+(c.b.miss.length?' <span class="faint">\u00b7 missing: '+esc(c.b.miss.join(', '))+'</span>':'')+' \u00b7 gap '+esc(String(c.b.D))+'</div>'; });
+    h+='</div>';
+  })();
   /* Carl 2026-09-04: DATE first — under each day: strong fades, then that day's weakened ones, then that day's DO NOT BET; soonest first inside each */
   function dayLabel(p){ var d=gameDate(p); if(!d)return 'Date TBD'; return d.toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',weekday:'long',month:'short',day:'numeric'}); }
   if(topPicks.length){
