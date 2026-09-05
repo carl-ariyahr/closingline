@@ -26,3 +26,19 @@ test('reverse line move: line moves toward the side with FEWER tickets', () => {
   // after kickoff nothing new is posted
   assert.equal(upsertSharpPicks({ picks: [] }, h, new Date('2026-09-13T21:00:00Z'), {}).created, 0);
 });
+
+test('early sharp move (>96h before kickoff) raises ONE alert per new move, tagged on the entry', () => {
+  const h = {};
+  recordLines(h, [g(-3, 35, 47.5, 70, 140, 30)], '2026-09-06T12:00:00Z');   // 7 days out
+  recordLines(h, [g(-2.5, 35, 47.5, 70, 140, 30)], '2026-09-07T12:00:00Z'); // spread toward GB (35% tix), 6 days out
+  const card = { picks: [] };
+  let r = upsertSharpPicks(card, h, new Date('2026-09-07T13:00:00Z'), { todayPT: '2026-09-07' });
+  assert.equal(r.alerts.length, 1); assert.equal(r.alerts[0].pick, 'Green Bay Packers +2.5'); assert.ok(r.alerts[0].hoursBefore > 96); assert.equal(r.alerts[0].daysBefore, 6.3);
+  assert.match(card.picks[0].signal, /^⚡ EARLY MOVE \(6.3 days out\)/); assert.equal(card.picks[0].early, true);
+  r = upsertSharpPicks(card, h, new Date('2026-09-07T14:00:00Z'), { todayPT: '2026-09-07' }); assert.equal(r.alerts.length, 0); // same move, no repeat
+  recordLines(h, [g(-2, 36, 47.5, 70, 140, 30)], '2026-09-08T12:00:00Z'); // a second move, still 5 days out → new alert
+  r = upsertSharpPicks(card, h, new Date('2026-09-08T13:00:00Z'), { todayPT: '2026-09-08' }); assert.equal(r.alerts.length, 1); assert.equal(r.alerts[0].to, -2);
+  // a move inside 96h is posted but not alerted
+  const h2 = {}; recordLines(h2, [g(-3, 35, 47.5, 70, 140, 30)], '2026-09-12T12:00:00Z'); recordLines(h2, [g(-2.5, 35, 47.5, 70, 140, 30)], '2026-09-12T15:00:00Z');
+  r = upsertSharpPicks({ picks: [] }, h2, new Date('2026-09-12T16:00:00Z'), { todayPT: '2026-09-12' }); assert.equal(r.created, 1); assert.equal(r.alerts.length, 0);
+});

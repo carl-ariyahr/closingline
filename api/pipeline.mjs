@@ -420,6 +420,9 @@ export default async function handler(req, res) {
         const beforeN = sc.picks.length; sc.picks = sc.picks.filter(p => p.result || !linesDoc.games[p.gamecode]?.excluded); // drop out-of-scope (FCS-vs-FCS) paper entries
         if (sc.picks.length !== beforeN) changed = true;
         report.sharp = upsertSharpPicks(sc, linesDoc.games, startedAt, { todayPT });
+        // Carl 2026-09-05: push-alert every NEW sharp move more than 96h before kickoff (the scheduler routine sends the push)
+        report.sharpAlerts = report.sharp.alerts.map(a => `${a.pick} — ${a.game}: ${a.market.toLowerCase()} ${a.market === 'Total' ? a.from : (a.from > 0 ? '+' : '') + a.from} → ${a.market === 'Total' ? a.to : (a.to > 0 ? '+' : '') + a.to} against ${a.tix}% of tickets, ${a.daysBefore} days before kickoff`);
+        if (report.sharp.alerts.length) changed = true;
         const livePicks = live.cards.filter(c => /^(slate|code)-/.test(String(c.id))).flatMap(c => c.picks || []).filter(p => !p.result && p.status !== 'dead');
         report.sharpStamped = stampSharpMoves(livePicks, linesDoc.games);
         if (report.sharp.created || report.sharp.updated || report.sharpStamped) changed = true;
