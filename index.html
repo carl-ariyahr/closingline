@@ -157,6 +157,14 @@
   .kbadge.sharp{background:rgba(165,108,255,.18);color:#c9a6ff;border:1px solid rgba(165,108,255,.6)}
   .cohortcard{border-left:4px solid var(--line);padding-left:10px;margin:14px 0}
   .cohortcard h3{margin:0 0 4px;font-size:14px} .cohortcard .rec{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:6px}
+  details.daycard{border:1px solid var(--line);border-radius:8px;padding:4px 12px;margin:10px 0}
+  details.daycard>summary{cursor:pointer;list-style:none;display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;padding:8px 0}
+  details.daycard>summary::-webkit-details-marker{display:none}
+  details.daycard>summary::before{content:'\25B8';color:var(--muted);margin-right:2px;font-size:12px}
+  details.daycard[open]>summary::before{content:'\25BE'}
+  details.daycard[open]>summary{border-bottom:1px solid var(--line);margin-bottom:6px}
+  details.daycard .dayname{font-family:var(--disp);font-weight:700;font-size:15px;letter-spacing:.08em;text-transform:uppercase}
+  details.daycard .daycounts{font-family:var(--mono);font-size:11px;color:var(--muted)}
   .bestbox{border:1px solid var(--amber);border-radius:8px;padding:8px 12px;margin:8px 0 6px;background:linear-gradient(90deg,rgba(233,169,74,.10),transparent 60%)}
   .bestbox h3{margin:2px 0 6px;font-size:15px;color:var(--amber)} .bestbox h3 small{font-family:var(--mono);font-weight:400;font-size:10.5px;color:var(--muted);margin-left:8px}
   .allvars{border:1px solid var(--amber);border-radius:8px;padding:8px 12px;margin:6px 0 14px;background:linear-gradient(90deg,rgba(233,169,74,.08),transparent 60%)}
@@ -691,7 +699,9 @@ function isNoBetLive(p){ return !!(p.liveCheck&&!p.liveCheck.ok&&p.liveCheck.why
 function ledgerCounted(){ return ledgerPicks().filter(function(p){return !p.noBet}); }
 /* 0 = clean fade on the latest read, 1 = weakened, 2 = DO NOT BET (used by Today's Plays grouping and the Cohorts tab) */
 function playState(p){ var L=p.liveCheck; if(isNoBetLive(p))return 2; if(L&&!L.ok&&L.why==='faded'&&(!p.result||p.result==='pending'))return 1; return 0; }
-document.addEventListener('toggle',function(ev){ var d=ev.target; if(!(d&&d.matches&&d.matches('details.cohortcard')))return;
+document.addEventListener('toggle',function(ev){ var d=ev.target;
+  if(d&&d.matches&&d.matches('details.daycard')){ try{var ds=JSON.parse(localStorage.getItem('closing-line-days-open')||'{}'); ds[d.getAttribute('data-day')]=d.open; localStorage.setItem('closing-line-days-open',JSON.stringify(ds));}catch(_){} return; }
+  if(!(d&&d.matches&&d.matches('details.cohortcard')))return;
   if(d.open){ document.querySelectorAll('details.cohortcard').forEach(function(o){ if(o!==d&&o.open)o.open=false; }); }
   try{ if(d.open)localStorage.setItem('closing-line-cohorts-open-one',d.getAttribute('data-cohort')); else if(localStorage.getItem('closing-line-cohorts-open-one')===d.getAttribute('data-cohort'))localStorage.removeItem('closing-line-cohorts-open-one'); }catch(_){}
 },true);
@@ -826,7 +836,7 @@ function streakHTML(){
         var today=(gameISO(p)===tISO);
         if(p.result==='win'){fw++;if(today)tw++}else if(p.result==='loss'){fl++;if(today)tl++}else if(today&&(!p.result||p.result==='pending'))tp++;
       });
-      return '<div class="tile"><span class="label">Plays — today</span><span class="big '+netUnitsCls(tw,tl)+'">'+tw+'–'+tl+'</span><span class="sub">'+(tp?tp+' still to play':'from the plays ledger')+'</span></div>'
+      return '<div class="tile"><span class="label">Carl’s plays — today</span><span class="big '+netUnitsCls(tw,tl)+'">'+tw+'–'+tl+'</span><span class="sub">'+(tp?tp+' still to play':'from the plays ledger')+'</span></div>'
         +'<div class="tile"><span class="label">Plays ledger</span><span class="big '+netUnitsCls(fw,fl)+'">'+fw+'–'+fl+'</span><span class="sub">'+netUnits(fw,fl)+' · every pick shown on Today’s Plays since Sep 2</span></div>';
     })()
     +'</div><div class="dots">'+dots+'</div></section>';
@@ -1090,7 +1100,7 @@ function render(){
   /* 1 — today's plays (soonest kickoff first, only games within 2 days) */
   function isFeatured(p){return p.featured||p.status==='play'||p.stack}
   if(cardSub==='plays'){
-  h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Today’s plays <small>highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)'+(picksData&&picksData.playsSource==='code'?' · picked by code since Sep 4':'')+'</small></h2>'
+  h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Carl’s plays <small>highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)'+(picksData&&picksData.playsSource==='code'?' · picked by code since Sep 4':'')+'</small></h2>'
     +'<p class="legend" style="margin:0 0 6px"><span style="color:#2ec4b6">▌ teal edge</span> = crowd held 70%+ of tickets on the side we fade &nbsp;·&nbsp; <span style="color:#e05297">▌ pink edge</span> = the money is under 55% on our side (the crowd still holds most of it) &nbsp;·&nbsp; <span style="color:#e0b400">▌ gold edge</span> = moneyline on the dog &nbsp;·&nbsp; <span style="color:#a56cff">▌ purple edge</span> = the book moved the line toward our side against the ticket majority (sharp money with us) &nbsp;·&nbsp; several edges = several. Each cohort has its own view under the Cohorts pill and a row on the Record tab.</p>';
   /* Carl 2026-09-04: make the state obvious — clean fades first, then weakened, then DO NOT BET; soonest kickoff first inside each group */
   var GROUPS=[[0,''],[1,'<h3 class="subhead warn">Signal weakened on the latest read — crowd still on the other side, but below the 60 / 8 bar</h3>'],[2,'<h3 class="subhead bad">DO NOT BET — the crowd has flipped to our side</h3>']];
@@ -1116,10 +1126,16 @@ function render(){
   /* Carl 2026-09-04: DATE first — under each day: strong fades, then that day's weakened ones, then that day's DO NOT BET; soonest first inside each */
   function dayLabel(p){ var d=gameDate(p); if(!d)return 'Date TBD'; return d.toLocaleDateString('en-US',{timeZone:'America/Los_Angeles',weekday:'long',month:'short',day:'numeric'}); }
   if(topPicks.length){
-    var days=[]; topPicks.forEach(function(p){ var lbl=dayLabel(p); var d=days.find(function(x){return x.lbl===lbl}); if(!d){d={lbl:lbl,picks:[]};days.push(d);} d.picks.push(p); });
+    /* each DATE is an accordion (Carl 2026-09-05): today open by default, other days folded; the header shows the counts; remembered per device */
+    var dayOpen={}; try{dayOpen=JSON.parse(localStorage.getItem('closing-line-days-open')||'{}')}catch(_){}
+    var todayLbl=null; topPicks.forEach(function(p){ if(gameISO(p)===ptISO()&&!todayLbl)todayLbl=dayLabel(p); });
+    var days=[]; topPicks.forEach(function(p){ var lbl=dayLabel(p); var d=days.find(function(x){return x.lbl===lbl}); if(!d){d={lbl:lbl,iso:gameISO(p)||lbl,picks:[]};days.push(d);} d.picks.push(p); });
     days.forEach(function(d){
-      h+='<h4 class="dayhead">'+esc(d.lbl)+'</h4>';
+      var n0=d.picks.filter(function(p){return playState(p)===0}).length, n1=d.picks.filter(function(p){return playState(p)===1}).length, n2=d.picks.filter(function(p){return playState(p)===2}).length;
+      var isOpen=(d.iso in dayOpen)?dayOpen[d.iso]:(d.lbl===todayLbl);
+      h+='<details class="daycard" data-day="'+esc(d.iso)+'"'+(isOpen?' open':'')+'><summary><span class="dayname">'+esc(d.lbl)+'</span><span class="daycounts">'+n0+' play'+(n0===1?'':'s')+(n1?' · <span style="color:var(--amber)">'+n1+' weakened</span>':'')+(n2?' · <span style="color:#e05252">'+n2+' do not bet</span>':'')+'</span></summary>';
       GROUPS.forEach(function(gr){ var ps=d.picks.filter(function(p){return playState(p)===gr[0]}); if(!ps.length)return; h+=gr[1]+ps.map(pickRow).join(''); });
+      h+='</details>';
     });
   }else{
     h+='<p class="none-msg">No live plays on the board — new qualifiers post the moment a snapshot finds them.</p>';
@@ -1139,7 +1155,7 @@ function render(){
     if(p.result==='win')tRec.w++; else if(p.result==='loss')tRec.l++; else if(!p.result||p.result==='pending')tRec.pend++;
   });
   h+='<p class="sysrec" style="margin:12px 0 0">'
-    +'Today’s plays: <b>'+tRec.w+'–'+tRec.l+'</b>'+(tRec.pend?' <span class="faint">('+tRec.pend+' still to play)</span>':'')
+    +'Carl’s plays today: <b>'+tRec.w+'–'+tRec.l+'</b>'+(tRec.pend?' <span class="faint">('+tRec.pend+' still to play)</span>':'')
     +' &nbsp;·&nbsp; Plays ledger since Sep 2: <b>'+fRec.w+'–'+fRec.l+'</b> ('+netUnits(fRec.w,fRec.l)+' at −110) — every pick that appeared here counts unless it was DO NOT BET at kickoff. Full list on the Record tab.</p>';
   h+='</section>';
   }
@@ -1198,7 +1214,7 @@ function render(){
     h+=allVars.length?allVars.map(pickRow).join(''):'<p class="none-msg">None on the board right now \u2014 the sharp-move box is the hard one; it fills as lines move against the public.</p>';
     if(oneShort.length){ h+='<h4 class="dayhead" style="margin-top:10px">One box short</h4>'+oneShort.map(function(p){ return pickRow(p)+'<div class="cohort" style="margin:-4px 0 8px 12px;color:var(--muted)">missing: '+esc(NM[varsOf(p).missing[0]]||varsOf(p).missing[0])+'</div>'; }).join(''); }
     h+='</div>';
-    h+='<p class="legend" style="margin:14px 0 4px">Tap a theory to open it. Every play carrying that colour on Today\u2019s Plays is listed inside.</p>';
+    h+='<p class="legend" style="margin:14px 0 4px">Tap a theory to open it. Every play carrying that colour on Carl\u2019s plays is listed inside.</p>';
     COH.forEach(function(c){
       var L=ledgerCounted().filter(function(p){return cohortsOf(p).indexOf(c[0])>=0}); var w=0,l=0; L.forEach(function(p){if(p.result==='win')w++;else if(p.result==='loss')l++;});
       var live=topPicks.filter(function(p){return cohortsOf(p).indexOf(c[0])>=0});
@@ -1206,7 +1222,7 @@ function render(){
         live=live.slice().sort(function(a,b){ var ea=a.sharpEarly?1:0, eb=b.sharpEarly?1:0; if(ea!==eb)return eb-ea; var ha=a.sharpHours||0, hb=b.sharpHours||0; if(ha!==hb)return hb-ha; return 0; });
       }
       var isOpen=openOne===c[0];
-      h+='<details class="cohortcard" data-cohort="'+c[0]+'" style="border-left-color:'+c[1]+'"'+(isOpen?' open':'')+'><summary><span style="color:'+c[1]+'">\u258c '+esc(c[2])+'</span> <span class="rec">record <b>'+w+'\u2013'+l+'</b>'+(w+l?' ('+Math.round(100*w/(w+l))+'% \u00b7 '+netUnits(w,l)+')':'')+' \u00b7 '+live.length+' on today\u2019s plays</span></summary>'
+      h+='<details class="cohortcard" data-cohort="'+c[0]+'" style="border-left-color:'+c[1]+'"'+(isOpen?' open':'')+'><summary><span style="color:'+c[1]+'">\u258c '+esc(c[2])+'</span> <span class="rec">record <b>'+w+'\u2013'+l+'</b>'+(w+l?' ('+Math.round(100*w/(w+l))+'% \u00b7 '+netUnits(w,l)+')':'')+' \u00b7 '+live.length+' on Carl\u2019s plays</span></summary>'
         +'<div class="rec">'+esc(c[3])+'</div>'+(live.length?live.map(pickRow).join(''):'<p class="none-msg">None on the board right now.</p>')+'</details>';
     });
     h+='</section>';
