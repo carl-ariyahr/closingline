@@ -269,6 +269,7 @@
     form.addbet{grid-template-columns:1fr}
     .tile .big{font-size:28px}
   }
+.cchip.clvb{color:#2ec4b6}.cchip.clvw{color:#e05297}.cchip.clvs{color:#8a8f98}
 </style>
 </head>
 <body>
@@ -665,16 +666,21 @@ function disciplineHTML(){
 
 /* ---------- CLV ---------- */
 function clvHTML(){
-  var agg=journalData&&journalData.clv?journalData.clv:null;
+  /* Carl 2026-09-07: CLV from the plays ledger — the pipeline stamps p.clv at grading (open = the number when shown, close = last pre-game read) */
+  var L=ledgerCounted().filter(function(p){return p.clv&&p.result&&p.result!=='pending'});
   var body;
-  if(agg&&agg.n>0){
-    var avg=agg.sum/agg.n;
-    body='<span class="big '+(avg>0?'pos':avg<0?'neg':'')+'" style="font-family:var(--disp);font-weight:700;font-size:34px">'+(avg>0?'+':'')+avg.toFixed(2)+' pts</span>'
-      +'<p class="cardnote" style="margin-top:6px">average closing line value across '+agg.n+' graded bets \u2014 positive means the numbers you took beat the close.</p>';
+  if(L.length){
+    var beat=0,worse=0,same=0,pts=[],cts=[],rb={w:0,l:0},rn={w:0,l:0};
+    L.forEach(function(p){ var c=p.clv; if(c.beat==='beat')beat++;else if(c.beat==='worse')worse++;else same++; (c.unit==='pts'?pts:cts).push(c.diff); var r=c.beat==='beat'?rb:rn; if(p.result==='win')r.w++;else if(p.result==='loss')r.l++; });
+    var avg=function(a){return a.length?(a.reduce(function(x,y){return x+y},0)/a.length):null};
+    var ap=avg(pts),ac=avg(cts);
+    body='<p class="sysrec"><b>'+beat+' beat the close</b> · '+worse+' worse · '+same+' unchanged <span class="faint">('+L.length+' graded plays with line history)</span></p>'
+      +'<p class="cardnote">'+(ap!=null?'Average '+(ap>0?'+':'')+ap.toFixed(2)+' pts on spreads and totals. ':'')+(ac!=null?'Average '+(ac>0?'+':'')+ac.toFixed(0)+'¢ on moneylines. ':'')
+      +'Record when we beat the close: <b>'+rb.w+'–'+rb.l+'</b>; when we did not: <b>'+rn.w+'–'+rn.l+'</b>. Positive CLV means the market moved toward our side after we posted — the real test of whether the fade signal is finding sharp money.</p>';
   }else{
-    body='<p class="none-msg">CLV appears once your logged bets get graded against closing lines \u2014 positive CLV means you\u2019re consistently beating the market\u2019s final number.</p>';
+    body='<p class="none-msg">CLV appears as Carl\u2019s plays get graded — the pipeline compares the number when the play was shown with the last pre-game number. Line history is kept two days, so older plays have none.</p>';
   }
-  return '<section class="panel"><h2>Closing line value</h2>'+body+'</section>';
+  return '<section class="panel"><h2>Closing line value <small>Carl\u2019s plays · did our number beat the market\u2019s final number?</small></h2>'+body+'</section>';
 }
 
 /* ---------- panel guard: a bad data shape must never blank the app ---------- */
@@ -697,7 +703,8 @@ function ledgerPicks(){
 /* DO NOT BET (Carl 2026-09-04): a play whose crowd has FLIPPED to our side is not a bet. While live it wears a red
    emblem; the emblem comes off if the signal returns. The read at kickoff decides: flipped at kickoff → the pipeline
    stamps noBet and the play is left out of every record count (it still shows, with its result, marked not counted). */
-function isNoBetLive(p){ return !!(p.liveCheck&&!p.liveCheck.ok&&p.liveCheck.why==='flipped'&&(!p.result||p.result==='pending')); }
+/* Carl 2026-09-07: a FADED read (below the bar, money under 55% on our side, Over fade, moneyline favorite) is a no-bet too */
+function isNoBetLive(p){ return !!(p.liveCheck&&!p.liveCheck.ok&&(p.liveCheck.why==='flipped'||p.liveCheck.why==='faded')&&(!p.result||p.result==='pending')); }
 function ledgerCounted(){ return ledgerPicks().filter(function(p){return !p.noBet}); }
 /* 0 = clean fade on the latest read, 1 = weakened, 2 = DO NOT BET (used by Today's Plays grouping and the Cohorts tab) */
 function playState(p){ var L=p.liveCheck; if(isNoBetLive(p))return 2; if(L&&!L.ok&&L.why==='faded'&&(!p.result||p.result==='pending'))return 1; return 0; }
@@ -1039,13 +1046,15 @@ function render(){
     var f98=(p.flag98||/98\/2 read/.test(String(p.signal||'')))?'<span class="kbadge flag98" title="98/2 read — one side sits at 98%+ or 2%-: a tiny or lopsided sample. Posted at its tier, treat with care.">* 98/2</span>':'';
     /* hourly CODE re-confirmation of live picks (lib/liveconfirm.mjs writes p.liveCheck) */
     var lc='', L=p.liveCheck;
-    var nb=(p.noBet&&p.result&&p.result!=='pending')?'<span class="nobet done" title="The crowd had flipped to our side at kickoff — this was not a bet and is not counted in the record">⛔ DO NOT BET · not counted</span>':'';
+    var nb=(p.noBet&&p.result&&p.result!=='pending')?'<span class="nobet done" title="At kickoff the crowd had flipped to our side or the signal had faded — this was not a bet and is not counted in the record">⛔ DO NOT BET · not counted</span>':'';
+    /* closing line value (Carl 2026-09-07): stamped by the pipeline at grading from the line history */
+    var clvc=p.clv?'<span class="cchip '+(p.clv.beat==='beat'?'clvb':p.clv.beat==='worse'?'clvw':'clvs')+'" title="Closing line value: we posted '+esc(String(p.clv.open))+', the market closed '+esc(String(p.clv.close))+(p.clv.unit==='cents'?' (cents, read off the away price)':'')+'">CLV '+(p.clv.diff>0?'+':'')+esc(String(p.clv.diff))+(p.clv.unit==='cents'?'¢':'')+'</span>':'';
     if(L&&(!p.result||p.result==='pending')){
       var when=L.ts?new Date(L.ts).toLocaleTimeString('en-US',{timeZone:'America/Los_Angeles',hour:'numeric',minute:'2-digit'}).toLowerCase().replace(' ',''):'';
       var nums=(L.T!=null&&L.H!=null)?' · crowd '+esc(String(L.T))+'% tix / '+esc(String(L.H))+'% $'+(L.D!=null?' · gap '+esc(String(L.D)):''):'';
-      lc=L.ok?'<span class="cchip lcok" title="Code re-read the live board: the crowd is still on the other side and the setup still clears the 60% tickets / 8-point gap bar">✓ STILL A FADE '+(L.n||1)+'×'+nums+' · '+esc(when)+'</span>'
+      lc=L.ok?'<span class="cchip lcok" title="Code re-read the live board: the crowd is still on the other side and the setup still clears the bar (60% tickets, 8-point gap, money 55%+ on our side)">✓ STILL A FADE '+(L.n||1)+'×'+nums+' · '+esc(when)+'</span>'
         :L.why==='flipped'?'<span class="nobet" title="The crowd has flipped to OUR side ('+esc(when)+' read) — this is no longer a fade. Not a bet. The emblem comes off if the signal returns before kickoff.">⛔ DO NOT BET</span>'
-        :L.why==='faded'?'<span class="cchip lcwarn" title="The crowd is still on the other side, but on the latest read the setup no longer clears the bar (crowd under 60% of tickets, or the money gap under 8). Still a bet by your rule, still counts — just weaker than when it was posted.">⚠ WEAKENED'+nums+' · '+esc(when)+'</span>':'';
+        :L.why==='faded'?'<span class="nobet" title="The crowd is still on the other side, but on the latest read the setup no longer clears the bar (crowd under 60% of tickets, money gap under 8, money under 55% on our side, an Over fade or a moneyline favorite). Not a bet unless the signal comes back before kickoff (Carl 2026-09-07).">⛔ DO NOT BET · weakened'+nums+' · '+esc(when)+'</span>':'';
     }
     var codeB=p.src==='code'?'<span class="kbadge codepick" title="Picked by the code pipeline from the VSiN board (tickets vs money), not by an AI">⚙ code</span>':(p.aiNote?'<span class="kbadge ainote" title="AI-written note — not a play since the Sep 4 cutover">AI note</span>':'');
     var co=cohortsOf(p); var COC={crowd70:'#2ec4b6',thinmoney:'#e05297',dogml:'#e0b400',promove:'#a56cff'};
@@ -1057,7 +1066,7 @@ function render(){
     return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+coCls+'"'+coStyle+'><span class="kbadge '+kb+'"'+kbTitle+'>'+kl+'</span>'+xref+codeB+stack+f98
       +'<div class="pmain">'+sp+'<b>'+esc(p.pick)+(f98?'<sup class="ast">*</sup>':'')+'</b> · '+esc(gameTxt)+stTxt+pushNote+'<div class="psig">'+esc(p.signal||'')+'</div>'+coNote+'</div>'
       +res
-      +'<span class="chips">'+lc+nb+confirmChip(p)+contChip(p)+'</span>'
+      +'<span class="chips">'+lc+nb+clvc+confirmChip(p)+contChip(p)+'</span>'
       +'<span class="pstat '+esc(p.status||'lean')+'">'+esc(p.status||'lean')+'</span>'
       +logBtn+'</div>';
   }
@@ -1105,7 +1114,7 @@ function render(){
   h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Carl’s plays <small>highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)'+(picksData&&picksData.playsSource==='code'?' · picked by code since Sep 4':'')+'</small></h2>'
     +'<p class="legend" style="margin:0 0 6px"><span style="color:#2ec4b6">▌ teal edge</span> = crowd held 70%+ of tickets on the side we fade &nbsp;·&nbsp; <span style="color:#e05297">▌ pink edge</span> = the money is under 55% on our side (the crowd still holds most of it) &nbsp;·&nbsp; <span style="color:#e0b400">▌ gold edge</span> = moneyline on the dog &nbsp;·&nbsp; <span style="color:#a56cff">▌ purple edge</span> = the book moved the line toward our side against the ticket majority (sharp money with us) &nbsp;·&nbsp; several edges = several. Each cohort has its own view under the Cohorts pill and a row on the Record tab.</p>';
   /* Carl 2026-09-04: make the state obvious — clean fades first, then weakened, then DO NOT BET; soonest kickoff first inside each group */
-  var GROUPS=[[0,''],[1,'<h3 class="subhead warn">Signal weakened on the latest read — crowd still on the other side, but below the 60 / 8 bar</h3>'],[2,'<h3 class="subhead bad">DO NOT BET — the crowd has flipped to our side</h3>']];
+  var GROUPS=[[0,''],[1,'<h3 class="subhead warn">Signal weakened on the latest read — crowd still on the other side, but below the 60 / 8 bar</h3>'],[2,'<h3 class="subhead bad">DO NOT BET — the signal is gone on the latest read: crowd flipped to our side, or below the bar (60% tickets / 8 gap / money 55%+ on our side)</h3>']];
   /* BEST PLAYS TODAY (Carl 2026-09-05): today's games only, clean fades only, ranked by how many favourable variables line up
      (crowd 70%+, pros moved the line our way, money 55%+ on our side, dog price for moneylines), then by gap. Top 5. */
   (function(){
@@ -1397,6 +1406,7 @@ function render(){
   }
 
   if(activeTab==='rec'){
+  h+=clvHTML();
   h+=safePanel(streakHTML,'Streak & trend');
   h+=safePanel(ledgerHTML2,'Plays ledger');
   h+=safePanel(tabRecordsHTML,'Record by tab');

@@ -27,14 +27,14 @@ test('steamroller (money ahead of tickets) never qualifies — the FSU stack bug
 test('D between 8 and 15 is watch; 15-25 lean; >=25 play', () => {
   const w = evalMarket('NFL', { a: { name: 'A', bets: 62, handle: 52 }, b: { name: 'B', bets: 38, handle: 48 } });
   assert.equal(w.tier, 'watch');
-  const l = evalMarket('NFL', { a: { name: 'A', bets: 70, handle: 50 }, b: { name: 'B', bets: 30, handle: 50 } });
+  const l = evalMarket('NFL', { a: { name: 'A', bets: 62, handle: 45 }, b: { name: 'B', bets: 38, handle: 55 } }); // D=17, money 55% ours
   assert.equal(l.tier, 'lean');
   const p = evalMarket('NFL', { a: { name: 'A', bets: 77, handle: 42 }, b: { name: 'B', bets: 23, handle: 58 } });
   assert.equal(p.tier, 'play');
 });
 
 test('college is fair game (Carl 2026-09-04): tier from D like every other sport', () => {
-  const r = evalMarket('CFB', { a: { name: 'Oklahoma ST Cowboys', bets: 74, handle: 48, line: '-13.5' }, b: { name: 'Tulsa Golden Hurricane', bets: 26, handle: 52, line: '+13.5' }, spreadMagnitude: 13.5 });
+  const r = evalMarket('CFB', { a: { name: 'Oklahoma ST Cowboys', bets: 74, handle: 44, line: '-13.5' }, b: { name: 'Tulsa Golden Hurricane', bets: 26, handle: 56, line: '+13.5' }, spreadMagnitude: 13.5, market: 'Spread' });
   assert.equal(r.tier, 'play');
   assert.ok(!r.downgraded.includes('college'));
 });
@@ -51,7 +51,7 @@ test('98/2 read keeps its tier but is flagged (Carl 2026-09-02: post it with an 
 });
 
 test('99/1 tickets: flagged, tier from D, not listed as a downgrade', () => {
-  const r = evalMarket('NBA', { a: { name: 'A', bets: 99, handle: 60 }, b: { name: 'B', bets: 1, handle: 40 } });
+  const r = evalMarket('NBA', { a: { name: 'A', bets: 99, handle: 40 }, b: { name: 'B', bets: 1, handle: 60 } });
   assert.equal(r.tier, 'play');
   assert.equal(r.flag98, true);
   assert.ok(!r.downgraded.some(d => /98/.test(d)));
@@ -98,4 +98,30 @@ test('NFL key-number note fires only on 2.5/3.5/6.5/7.5', () => {
   assert.ok(keyNumberNote('NFL', 'Spread', '-7.5'));
   assert.equal(keyNumberNote('NFL', 'Spread', '+4.5'), null);
   assert.equal(keyNumberNote('MLB', 'Spread', '+2.5'), null);
+});
+
+// ---- Carl 2026-09-07 gates: downgrade to watch (never a play), tracked by name in `downgraded` ----
+test('gate: money under 55% on our side downgrades to watch (60/52 qualifies on the gap but the money barely leans)', () => {
+  const r = evalMarket('NFL', { a: { name: 'A', bets: 78, handle: 50 }, b: { name: 'B', bets: 22, handle: 50 }, market: 'Spread' }); // D=28 would be a play
+  assert.equal(r.pick, 'B'); assert.equal(r.tier, 'watch'); assert.deepEqual(r.downgraded, ['money<55']);
+  const ok = evalMarket('NFL', { a: { name: 'A', bets: 78, handle: 45 }, b: { name: 'B', bets: 22, handle: 55 }, market: 'Spread' }); // exactly 55% ours
+  assert.equal(ok.tier, 'play'); assert.deepEqual(ok.downgraded, []);
+});
+test('gate: fading the crowd onto the Over is never a play; the Under fade is untouched', () => {
+  const over = evalMarket('MLB', { a: { name: 'Over 8', bets: 30, handle: 70 }, b: { name: 'Under 8', bets: 70, handle: 30 }, market: 'Total' });
+  assert.equal(over.pick, 'Over 8'); assert.equal(over.tier, 'watch'); assert.deepEqual(over.downgraded, ['over-fade']);
+  const under = evalMarket('MLB', { a: { name: 'Over 8', bets: 70, handle: 30 }, b: { name: 'Under 8', bets: 30, handle: 70 }, market: 'Total' });
+  assert.equal(under.pick, 'Under 8'); assert.equal(under.tier, 'play');
+});
+test('gate: a moneyline pick must be a dog (> +100); favorites and pick-ems drop to watch', () => {
+  const fav = evalMarket('MLB', { a: { name: 'A ML', bets: 70, handle: 30, line: '+140' }, b: { name: 'B ML', bets: 30, handle: 70, line: '-160' }, market: 'Moneyline' });
+  assert.equal(fav.pick, 'B ML'); assert.equal(fav.tier, 'watch'); assert.deepEqual(fav.downgraded, ['ml-favorite']);
+  const pk = evalMarket('MLB', { a: { name: 'A ML', bets: 70, handle: 30, line: '-105' }, b: { name: 'B ML', bets: 30, handle: 70, line: '+100' }, market: 'Moneyline' });
+  assert.equal(pk.tier, 'watch');
+  const dog = evalMarket('MLB', { a: { name: 'A ML', bets: 70, handle: 30, line: '-125' }, b: { name: 'B ML', bets: 30, handle: 70, line: '+105' }, market: 'Moneyline' });
+  assert.equal(dog.tier, 'play'); assert.deepEqual(dog.downgraded, []);
+});
+test('gates stack with the spread>=20 downgrade and are all listed', () => {
+  const r = evalMarket('CFB', { a: { name: 'Fav -24', bets: 80, handle: 50, line: '-24' }, b: { name: 'Dog +24', bets: 20, handle: 50, line: '+24' }, spreadMagnitude: -24, market: 'Spread' });
+  assert.equal(r.tier, 'watch'); assert.deepEqual(r.downgraded, ['spread>=20', 'money<55']);
 });

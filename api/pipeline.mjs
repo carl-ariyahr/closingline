@@ -17,6 +17,7 @@ import { syncCodeCard } from '../lib/codecard.mjs';
 import { recordLines, pruneHistory, upsertYoYoPicks, crossReference } from '../lib/yoyo.mjs';
 import { upsertSharpPicks, stampSharpMoves } from '../lib/sharp.mjs';
 import { authorized } from '../lib/auth.mjs';
+import { clvFor, clvSummary } from '../lib/clv.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
@@ -385,6 +386,7 @@ export default async function handler(req, res) {
     const results = await gradePicks(allPicks.filter(p => !p.result));
     for (const { pick, result } of results) {
       pick.result = result; pick.gradedAt = ts;
+      pick.clv = clvFor(linesDoc.games, pick, pick.postedAt); // closing line value (Carl 2026-09-07)
       report.graded.push({ result, pick: pick.pick, game: pick.game, tier: pick.tier, status: pick.status });
     }
   } catch (e) { report.errors.push(`grading: ${e.message || e}`); }
@@ -480,6 +482,14 @@ export default async function handler(req, res) {
           lp.playsShownAt = ts; report.playsStamped++; changed = true;
         }
       }
+      // ---- CLV backfill (Carl 2026-09-07): every graded code pick gets a closing-line-value stamp once (null = no history) ----
+      for (const c of live.cards) {
+        if (!/^code-/.test(String(c.id)) || !Array.isArray(c.picks)) continue;
+        for (const lp of c.picks) {
+          if (!lp.result || lp.result === 'pending' || lp.clv !== undefined || !lp.gamecode) continue;
+          lp.clv = clvFor(linesDoc.games, lp, lp.playsShownAt || lp.postedAt); changed = true;
+        }
+      }
       // ---- 2c. GRADE finished live picks in code, every run (Carl 2026-09-03: "make sure this updates as the day goes on") ----
       // ESPN finals only; a pick whose side/number can't be read from its own text is left for the AI grader.
       report.liveGraded = [];
@@ -503,6 +513,7 @@ export default async function handler(req, res) {
           const result = gradeAgainst(matchGame(espnLive[key], gp), gp);
           if (!result) continue;
           lp.result = result; lp.gradedAt = ts; lp.gradedBy = 'code';
+          if (lp.gamecode) lp.clv = clvFor(linesDoc.games, lp, lp.playsShownAt || lp.postedAt); // closing line value (Carl 2026-09-07)
           if (noBetAtKickoff(lp)) { lp.noBet = true; lp.noBetAt = lp.liveCheck.ts; } // crowd had flipped at kickoff → not a bet, not counted
           lp.cohorts = cohortsOf(lp); if (lp.sharpMove && !lp.cohorts.includes('promove')) lp.cohorts.push('promove'); // tracked cohorts for the Record tab
           if (lp.status === 'play' || lp.stack) lp.featured = true;
@@ -510,6 +521,7 @@ export default async function handler(req, res) {
           changed = true;
         }
       }
+      report.clv = clvSummary(live.cards.filter(c => /^code-/.test(String(c.id))).flatMap(c => c.picks || []).filter(p => p.playsShownAt && !p.noBet && p.result && p.result !== 'pending'));
       if (changed) { live.rev = (live.rev || 0) + 1; await writeBlob(LIVE_PICKS_BLOB, live); report.liveConfirm.written = true; }
     }
   } catch (e) { report.errors.push(`live confirm: ${e.message || e}`); }

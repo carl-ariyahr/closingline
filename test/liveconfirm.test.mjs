@@ -12,7 +12,7 @@ const game = (over, under, mlAway, mlHome) => ({
   ml: { away_price: 203, home_price: -240, away: mlAway, home: mlHome },
 });
 const GAMES = [
-  game({ handle: 84, bets: 71 }, { handle: 16, bets: 29 }, { handle: 40, bets: 20 }, { handle: 60, bets: 80 }),
+  game({ handle: 84, bets: 71 }, { handle: 16, bets: 29 }, { handle: 56, bets: 20 }, { handle: 44, bets: 80 }),
   { gamecode: '20260902MLB00001', sport: 'MLB', date: '2026-09-02', away: 'Athletics', home: 'Texas Rangers',
     spread: { line_home: -1.5, away: {}, home: {} }, total: { line: 8, over: { handle: 27, bets: 77 }, under: { handle: 73, bets: 23 } },
     ml: { away_price: 150, home_price: -175, away: { handle: 46, bets: 20 }, home: { handle: 54, bets: 80 } } },
@@ -63,7 +63,7 @@ test('liveSide: team picks resolve to away/home, totals to over/under', () => {
 
 test('liveCheck: still-qualifying pick re-confirms with fresh numbers', () => {
   const chk = liveCheck({ type: 'Moneyline', pick: 'STL Cardinals ML +203' }, GAMES[0], NOW);
-  assert.equal(chk.ok, true); assert.equal(chk.T, 80); assert.equal(chk.H, 60); assert.equal(chk.D, 20); assert.equal(chk.tier, 'lean');
+  assert.equal(chk.ok, true); assert.equal(chk.T, 80); assert.equal(chk.H, 44); assert.equal(chk.D, 36); assert.equal(chk.tier, 'play');
 });
 
 test('liveCheck: Under 8 with the public on the Over but money AHEAD of tickets = faded (below the bar)', () => {
@@ -137,9 +137,19 @@ test('doubleheader: a Total resolves by its line, a team pick without a game num
   assert.equal(liveGradePick(ml, { away: 'DET Tigers', home: 'CLE Guardians', date: '2026-09-04', sport: 'MLB' }).dhIndex, null);
 });
 
-test('DO NOT BET: only a FLIPPED read at kickoff makes a play a no-bet; faded and ok do not', () => {
+test('liveCheck: a read that trips a gate (money under 55% ours) is FADED, naming the gate (Carl 2026-09-07)', () => {
+  const g = game({ handle: 84, bets: 71 }, { handle: 16, bets: 29 }, { handle: 40, bets: 20 }, { handle: 60, bets: 80 }); // ML: crowd 80% / money 60% → ours 40%
+  const chk = liveCheck({ type: 'Moneyline', pick: 'STL Cardinals ML +203' }, g, NOW);
+  assert.equal(chk.ok, false); assert.equal(chk.why, 'faded'); assert.deepEqual(chk.gate, ['money<55']); assert.equal(chk.T, 80); assert.equal(chk.H, 60);
+  const lp = { pick: 'STL Cardinals ML +203', signal: 'x' };
+  applyLiveCheck(lp, chk, NOW);
+  assert.match(lp.signal, /money under 55% on our side/); assert.match(lp.signal, /Not a bet/);
+});
+
+test('DO NOT BET: a FLIPPED or FADED read at kickoff makes a play a no-bet (Carl 2026-09-04 + 2026-09-07); ok does not', () => {
   assert.equal(noBetAtKickoff({ liveCheck: { ok: false, why: 'flipped', ts: 't' } }), true);
-  assert.equal(noBetAtKickoff({ liveCheck: { ok: false, why: 'faded' } }), false);
+  assert.equal(noBetAtKickoff({ liveCheck: { ok: false, why: 'faded' } }), true);
+  assert.equal(noBetAtKickoff({ liveCheck: { ok: false, why: 'unmatched' } }), false);
   assert.equal(noBetAtKickoff({ liveCheck: { ok: true } }), false);
   assert.equal(noBetAtKickoff({}), false);
   // bet → no bet → bet again: the latest read wins (applyLiveCheck replaces the whole liveCheck)

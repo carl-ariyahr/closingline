@@ -57,7 +57,7 @@ test('evalGame emits explicit side + pickTeam, and grading round-trips from it',
     gamecode: '20260902MLB00001', sport: 'MLB', date: '2026-09-02', away: 'Athletics', home: 'Texas Rangers',
     spread: { line_home: -1.5, away: { handle: null, bets: null }, home: { handle: null, bets: null } },
     total: { line: 8, over: { handle: 27, bets: 77 }, under: { handle: 73, bets: 23 } },
-    ml: { away_price: 150, home_price: -175, away: { handle: 46, bets: 20 }, home: { handle: 54, bets: 80 } },
+    ml: { away_price: 150, home_price: -175, away: { handle: 56, bets: 20 }, home: { handle: 44, bets: 80 } }, // money 56% ours (2026-09-07 gate)
   };
   const picks = evalGame(game, new Date('2026-09-02T18:00:00Z'));
   const ml = picks.find(p => p.type === 'Moneyline'), tot = picks.find(p => p.type === 'Total');

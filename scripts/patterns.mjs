@@ -5,6 +5,7 @@
 import { get } from '@vercel/blob';
 import fs from 'node:fs';
 import { parseLiveGame, cohortsOf } from '../lib/liveconfirm.mjs';
+import { clvSummary } from '../lib/clv.mjs';
 for (const l of fs.readFileSync('.env.local', 'utf8').split('\n')) { const m = l.match(/^([A-Z_]+)=(.*)$/); if (m) process.env[m[1]] = m[2].replace(/^"|"$/g, ''); }
 const since = (process.argv.find(a => a.startsWith('--since=')) || '--since=2026-09-02').split('=')[1];
 async function rb(n) { const r = await get(n, { access: 'private', useCache: false }); return JSON.parse(await new Response(r.stream).text()); }
@@ -21,6 +22,7 @@ const counted = led.filter(p => !p.noBet);
 console.log(`CARL'S PLAYS since ${since}: ${counted.length} counted → ${rec(counted)}   (+${led.length - counted.length} DO NOT BET, not counted: ${rec(led.filter(p => p.noBet))})`);
 console.log('  by day\n' + cut(counted, p => p._date));
 console.log('  by kickoff state\n' + cut(led, p => p.noBet ? 'DO NOT BET' : p.liveCheck ? (p.liveCheck.ok ? 'still a fade' : p.liveCheck.why) : 'unchecked'));
+{ const c = clvSummary(counted); console.log(`  closing line value: ${c.n} measured → beat ${c.beat} (${c.byOutcome.beat.w}-${c.byOutcome.beat.l}), worse ${c.worse} (${c.byOutcome.worse.w}-${c.byOutcome.worse.l}), same ${c.same} (${c.byOutcome.same.w}-${c.byOutcome.same.l})${c.avgPts != null ? `, avg ${c.avgPts > 0 ? '+' : ''}${c.avgPts} pts` : ''}${c.avgCents != null ? `, avg ${c.avgCents > 0 ? '+' : ''}${c.avgCents}¢ (ML)` : ''}`); }
 console.log('  by market\n' + cut(counted, mkOf));
 console.log('  by sport\n' + cut(counted, sportOf));
 console.log('  by source\n' + cut(counted, p => p.src === 'code' ? 'code' : 'AI card'));
