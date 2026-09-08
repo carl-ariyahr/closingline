@@ -16,6 +16,7 @@ test('cardContext carries each play with its line path; pending day found until 
   assert.equal(live.cards[0].picks[0].commentary.text, 'The total has dropped half a run since open.');
   assert.equal(live.dailyCards['2026-09-08'].note, 'Quiet Tuesday.');
   assert.equal(pendingCommentaryDay(live), '2026-09-08'); // rank 2 still lacks one
+  assert.deepEqual(cardContext(live, {}, '2026-09-08', { onlyMissing: true }).plays.map(p => p.rank), [2]);
   applyCommentary(live, '2026-09-08', { 'g2|Moneyline': 'x'.repeat(700) }, NOW);
   assert.equal(live.cards[0].picks[1].commentary.text.length, 600);
   assert.equal(pendingCommentaryDay(live), null);

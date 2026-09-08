@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const hist = await rb(LINES).catch(() => ({ games: {} }));
       const day = req.query.pending === '1' ? pendingCommentaryDay(live) : (req.query.day || Object.keys(live.dailyCards || {}).sort().pop());
-      return res.status(200).json({ at: new Date().toISOString(), day: day || null, card: day ? cardContext(live, hist.games || {}, day) : null });
+      return res.status(200).json({ at: new Date().toISOString(), day: day || null, card: day ? cardContext(live, hist.games || {}, day, { onlyMissing: req.query.pending === '1' }) : null });
     }
     if (req.method !== 'POST') { res.setHeader('Allow', 'GET, POST'); return res.status(405).end(); }
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});

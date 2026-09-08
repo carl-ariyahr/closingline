@@ -18,7 +18,7 @@ import { recordLines, pruneHistory, upsertYoYoPicks, crossReference } from '../l
 import { upsertSharpPicks, stampSharpMoves } from '../lib/sharp.mjs';
 import { authorized } from '../lib/auth.mjs';
 import { clvFor, clvSummary } from '../lib/clv.mjs';
-import { shouldBuild, buildDailyCard, nextDayPT } from '../lib/dailycard.mjs';
+import { shouldBuild, buildDailyCard, cardDayPT } from '../lib/dailycard.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
@@ -461,15 +461,16 @@ export default async function handler(req, res) {
           if (applyLiveCheck(lp, chk, startedAt)) changed = true;
         }
       }
-      // ---- THE DAILY CARD (Carl 2026-09-07): tomorrow's card, built once at/after 5pm PT, top 4 by gap, locked ----
+      // ---- THE DAILY CARD (Carl 2026-09-07/08): today's card, fills from 7am PT to the 12:25pm run, top 4 by gap, each play locked when added ----
       {
-        const day = nextDayPT(startedAt);
-        report.dailyCard = { day, built: false };
+        const day = cardDayPT(startedAt);
+        const cur = live.dailyCards?.[day];
+        report.dailyCard = { day, picks: (cur?.picks || []).map(p => `${p.rank}. ${p.pick}`), added: 0 };
         if (shouldBuild(live, day, hourPT)) {
           const card = buildDailyCard(live, day, startedAt);
-          if (card) { report.dailyCard = { day, built: true, picks: card.picks.map(p => `${p.rank}. ${p.pick} (gap ${p.D})`), candidates: card.candidates }; changed = true; }
-          else report.dailyCard.note = 'no play-tier candidate yet — will retry next run';
-        } else if (live.dailyCards?.[day]) report.dailyCard = { day, built: true, lockedAt: live.dailyCards[day].builtAt, picks: live.dailyCards[day].picks.map(p => `${p.rank}. ${p.pick}`) };
+          if (card) { report.dailyCard = { day, picks: card.picks.map(p => `${p.rank}. ${p.pick} (gap ${p.D})`), added: card.added, candidates: card.candidates }; changed = true; }
+          else report.dailyCard.note = cur?.picks?.length ? 'no new clean play-tier candidate this run' : 'no play-tier candidate yet — will retry next run until 12:25pm PT';
+        } else report.dailyCard.note = hourPT < 7 ? 'before the 7am PT build window' : hourPT >= 13 ? 'build window closed for today' : 'card is full';
       }
       // ---- PLAYS LEDGER stamp (Carl 2026-09-02: "if you show it to me, it needs to be counted") ----
       // Same rule the front page uses for Today's Plays. Once stamped, a pick is counted in the plays
