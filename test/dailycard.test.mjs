@@ -42,7 +42,7 @@ test('buildDailyCard: top CAP by gap, stamps rank + playsShownAt; nothing to add
   assert.equal(l.dailyCardSince, NOW.toISOString());
   assert.equal(shouldBuild(l, '2026-09-08', 9), false); // full
   assert.equal(buildDailyCard(l, '2026-09-08', NOW), null); // full: nothing added
-  const empty = live([pk({ status: 'watch' })]);
+  const empty = live([pk({ status: 'watch', liveCheck: { ok: true, tier: 'watch' } })]);
   assert.equal(buildDailyCard(empty, '2026-09-08', NOW), null); assert.equal(empty.dailyCards['2026-09-08'], undefined);
 });
 
@@ -81,5 +81,6 @@ test('push text and one-time push marking through the alerts feed', () => {
   assert.match(txt, /^🃏 Card for Tue, Sep 8 — 2 plays \(top 4 by gap, 2 qualifiers so far, updated 5:25 PM PT\)/);
   assert.match(txt, /\n1\. Under 8 — A @ B \(MLB, 5:10 PM PT\) · crowd 70% \/ money 40% · gap 30\n2\. Dog ML \+120/);
   assert.equal(pendingCard(l).day, '2026-09-08');
-  assert.equal(markCardPushed(l, card, NOW), 1); assert.equal(pendingCard(l), null); assert.equal(markCardPushed(l, card, NOW), 0);
+  assert.equal(markCardPushed(l, card, NOW), 1); assert.equal(pendingCard(l), null);
+  card.updatedAt = '2026-09-08T01:00:00Z'; assert.equal(pendingCard(l).day, '2026-09-08'); // gained plays after the push → pending again
 });
