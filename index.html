@@ -270,6 +270,7 @@
     .tile .big{font-size:28px}
   }
 .kbadge.rank{background:var(--amber);color:#111;font-weight:700}
+.pread{margin:4px 0 2px;font-size:12.5px;line-height:1.4;color:#d8d3c4;font-style:italic;border-left:2px solid var(--amber);padding-left:8px}
 .cchip.clvb{color:#2ec4b6}.cchip.clvw{color:#e05297}.cchip.clvs{color:#8a8f98}
 </style>
 </head>
@@ -1066,7 +1067,7 @@ function render(){
     var coNote=co.length?'<div class="cohort">'+co.map(function(c){return c==='crowd70'?'<span style="color:#2ec4b6">▌ crowd '+(coT!=null?esc(String(coT))+'%':'70%+')+' of tickets</span>':c==='thinmoney'?'<span style="color:#e05297">▌ money only '+(coH!=null?esc(String(100-coH))+'%':'<55%')+' on our side</span>':c==='promove'?'<span style="color:#a56cff">▌ '+(p.sharpEarly?'⚡ EARLY ('+(Math.round((p.sharpHours||0)/24*10)/10)+' days out) — ':'')+'pros moved the line our way: '+esc(String(p.sharpMove||''))+'</span>':'<span style="color:#e0b400">▌ dog moneyline</span>'}).join(' ')+'</div>':'';
     var kbTitle=p.kind==='ps'?' title="Phil Steele Inside the Pressbox '+(p.psWho==='computer'?'Computer Best Bet':'Phil\u2019s Best Bet')+(p.week?' \u00b7 Week '+esc(String(p.week)):'')+'"':p.kind==='yoyo'?' title="The line went from one number to another and back (VSiN/DK). Flag only \u2014 not a bet, not graded."':'';
     return '<div class="pickrow'+(p.stack?' stacked':(p.status==='play'?' hot':''))+coCls+'"'+coStyle+'><span class="kbadge '+kb+'"'+kbTitle+'>'+kl+'</span>'+rankB+xref+codeB+stack+f98
-      +'<div class="pmain">'+sp+'<b>'+esc(p.pick)+(f98?'<sup class="ast">*</sup>':'')+'</b> · '+esc(gameTxt)+stTxt+pushNote+'<div class="psig">'+esc(p.signal||'')+'</div>'+coNote+'</div>'
+      +'<div class="pmain">'+sp+'<b>'+esc(p.pick)+(f98?'<sup class="ast">*</sup>':'')+'</b> · '+esc(gameTxt)+stTxt+pushNote+'<div class="psig">'+esc(p.signal||'')+'</div>'+(p.commentary&&p.commentary.text?'<div class="pread" title="Written read from the evening routine — commentary only, never changes the pick">✎ '+esc(p.commentary.text)+'</div>':'')+coNote+'</div>'
       +res
       +'<span class="chips">'+lc+nb+clvc+confirmChip(p)+contChip(p)+'</span>'
       +'<span class="pstat '+esc(p.status||'lean')+'">'+esc(p.status||'lean')+'</span>'
@@ -1170,6 +1171,7 @@ function render(){
     if(isNoBetLive(p))return; /* currently DO NOT BET — not a bet, not 'still to play' */
     if(p.result==='win')tRec.w++; else if(p.result==='loss')tRec.l++; else if(!p.result||p.result==='pending')tRec.pend++;
   });
+  (function(){ var es=(journalData&&Array.isArray(journalData.entries))?journalData.entries:[]; var last=es.length?es[es.length-1]:null; if(last&&last.read){ h+='<details class="daycard" style="margin-top:10px"><summary><span class="sumrow"><span class="dayname">✎ Last night\u2019s read \u00b7 '+esc(String(last.date||''))+'</span></span></summary><p class="cardnote" style="margin:8px 12px">'+esc(String(last.read))+'</p>'+(Array.isArray(last.recommendations)&&last.recommendations.length?'<p class="cardnote" style="margin:0 12px 10px"><b>Watching:</b> '+last.recommendations.map(function(r){return esc(String(r))}).join(' \u00b7 ')+'</p>':'')+'</details>'; } })();
   h+='<p class="sysrec" style="margin:12px 0 0">'
     +'Carl’s plays today: <b>'+tRec.w+'–'+tRec.l+'</b>'+(tRec.pend?' <span class="faint">('+tRec.pend+' still to play)</span>':'')
     +' &nbsp;·&nbsp; Plays ledger since Sep 2: <b>'+fRec.w+'–'+fRec.l+'</b> ('+netUnits(fRec.w,fRec.l)+' at −110) — every pick that appeared here counts unless it was DO NOT BET at kickoff. Full list on the Record tab.</p>';
