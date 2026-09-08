@@ -461,9 +461,25 @@ export default async function handler(req, res) {
           if (applyLiveCheck(lp, chk, startedAt)) changed = true;
         }
       }
-      // ---- THE DAILY CARD (Carl 2026-09-07/08): today's card, fills from 7am PT to the 12:25pm run, top 4 by gap, each play locked when added ----
+      // ---- THE DAILY CARD (Carl 2026-09-07/08): today's card, fills 7am-12:25pm PT, top 3 (play tier + 2 public reads), each play locked when added ----
       {
         const day = cardDayPT(startedAt);
+        // price-shading box: refresh the Pinnacle-vs-retail read for today's play-tier picks on build-window runs
+        // (one metered call per sport that has a candidate; the posting-time read is often hours old)
+        if (shouldBuild(live, day, hourPT)) {
+          report.sharpRefresh = { sports: [], stamped: 0 };
+          for (const c of live.cards) {
+            if (!/^code-/.test(String(c.id)) || !Array.isArray(c.picks)) continue;
+            for (const lp of c.picks) {
+              if (lp.src !== 'code' || lp.date !== day || !lp.liveCheck?.ok || lp.liveCheck.tier !== 'play' || (lp.result && lp.result !== 'pending')) continue;
+              const b = await board(lp.sport); if (!b?.forGame) continue;
+              if (!report.sharpRefresh.sports.includes(lp.sport)) report.sharpRefresh.sports.push(lp.sport);
+              const info = b.forGame(lp.away, lp.home, lp.date);
+              const note = sharpNoteFor({ type: lp.type, side: lp.side }, info) || null;
+              if (note !== (lp.sharpNote || null)) { lp.sharpNote = note; lp.sharpAt = ts; report.sharpRefresh.stamped++; changed = true; }
+            }
+          }
+        }
         const cur = live.dailyCards?.[day];
         report.dailyCard = { day, picks: (cur?.picks || []).map(p => `${p.rank}. ${p.pick}`), added: 0 };
         if (shouldBuild(live, day, hourPT)) {

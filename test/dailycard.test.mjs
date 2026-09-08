@@ -4,7 +4,7 @@ import { candidates, shouldBuild, buildDailyCard, replaceCard, cardDayPT, nextDa
 import { pendingCard, markCardPushed } from '../lib/alerts.mjs';
 
 const NOW = new Date('2026-09-08T00:25:00Z'); // Sep 7, 5:25pm PT
-const pk = (o = {}) => ({ src: 'code', srcKey: 'g|Total', kind: 'fade', type: 'Total', pick: 'Under 8', game: 'A @ B — 2026-09-08 (MLB)', sport: 'MLB', date: '2026-09-08', status: 'play', D: 30, T: 70, H: 40, start: '2026-09-09T00:10:00Z', postedAt: '2026-09-07T20:00:00Z', liveCheck: { ok: true, tier: 'play', T: 70, H: 40, D: 30 }, ...o });
+const pk = (o = {}) => ({ src: 'code', srcKey: 'g|Total', kind: 'fade', type: 'Total', pick: 'Under 8', game: 'A @ B — 2026-09-08 (MLB)', sport: 'MLB', date: '2026-09-08', status: 'play', D: 30, T: 70, H: 40, start: '2026-09-09T00:10:00Z', postedAt: '2026-09-07T20:00:00Z', liveCheck: { ok: true, tier: 'play', T: 70, H: 30, D: 40 }, confirmation: 'confirmed', ...o });
 const live = picks => ({ cards: [{ id: 'code-2026-09-07', picks }] });
 
 test('the card is for today in PT; the window is 7am to the 12:25pm run and closes when the card is full', () => {
@@ -13,8 +13,8 @@ test('the card is for today in PT; the window is 7am to the 12:25pm run and clos
   assert.equal(shouldBuild({}, '2026-09-08', 7), true);
   assert.equal(shouldBuild({}, '2026-09-08', 12), true);
   assert.equal(shouldBuild({}, '2026-09-08', 13), false);
-  assert.equal(shouldBuild({ dailyCards: { '2026-09-08': { picks: [1, 2, 3] } } }, '2026-09-08', 9), true);   // room for one more
-  assert.equal(shouldBuild({ dailyCards: { '2026-09-08': { picks: [1, 2, 3, 4] } } }, '2026-09-08', 9), false); // full
+  assert.equal(shouldBuild({ dailyCards: { '2026-09-08': { picks: [1, 2] } } }, '2026-09-08', 9), true);      // room for one more
+  assert.equal(shouldBuild({ dailyCards: { '2026-09-08': { picks: [1, 2, 3] } } }, '2026-09-08', 9), false);  // full
 });
 
 test('candidates: the latest read must be ok at play tier; today; not started; ranked by gap', () => {
@@ -27,6 +27,7 @@ test('candidates: the latest read must be ok at play tier; today; not started; r
     pk({ srcKey: 'g', pick: 'Under 11', D: 28, result: 'win' }),                                   // graded
     pk({ srcKey: 'h', pick: 'Under 12', D: 19, liveCheck: { ok: true, tier: 'lean' } }),           // shown days ago, status still 'play', but the read says lean
     pk({ srcKey: 'i', pick: 'Under 13', D: 40, liveCheck: undefined }),                            // no read yet this run
+    pk({ srcKey: 'j', pick: 'Under 14', D: 45, liveCheck: { ok: true, tier: 'play', T: 62, H: 44 }, confirmation: 'unconfirmed' }), // play tier but 0 of 5 reads: below the strict bar
   ];
   assert.deepEqual(candidates(live(picks), '2026-09-08', NOW).map(p => p.pick), ['Under 9', 'Under 7']);
 });
@@ -35,10 +36,10 @@ test('buildDailyCard: top CAP by gap, stamps rank + playsShownAt; nothing to add
   const picks = [1, 2, 3, 4, 5, 6].map(i => pk({ srcKey: 's' + i, pick: 'Under ' + i, D: 20 + i * 5 }));
   const l = live(picks);
   const card = buildDailyCard(l, '2026-09-08', NOW);
-  assert.equal(card.picks.length, CAP); assert.equal(card.candidates, 6); assert.equal(card.added, 4);
-  assert.deepEqual(card.picks.map(p => p.pick), ['Under 6', 'Under 5', 'Under 4', 'Under 3']);
-  assert.equal(picks[5].dailyCard.rank, 1); assert.equal(picks[5].playsShownAt, NOW.toISOString());
-  assert.equal(picks[1].dailyCard, undefined); assert.equal(picks[1].playsShownAt, undefined); // rank 5 and 6: tracked, not shown
+  assert.equal(card.picks.length, CAP); assert.equal(card.candidates, 6); assert.equal(card.added, 3);
+  assert.deepEqual(card.picks.map(p => p.pick), ['Under 6', 'Under 5', 'Under 4']);
+  assert.equal(picks[5].dailyCard.rank, 1); assert.equal(picks[5].playsShownAt, NOW.toISOString()); assert.deepEqual(picks[5].dailyCard.boxes.got, ['ticket', 'action', 'money65']);
+  assert.equal(picks[1].dailyCard, undefined); assert.equal(picks[1].playsShownAt, undefined); // rank 4 to 6: tracked, not shown
   assert.equal(l.dailyCardSince, NOW.toISOString());
   assert.equal(shouldBuild(l, '2026-09-08', 9), false); // full
   assert.equal(buildDailyCard(l, '2026-09-08', NOW), null); // full: nothing added
@@ -50,9 +51,9 @@ test('the card fills across runs: a later clean qualifier is added at the next r
   const a = pk({ srcKey: 'a', pick: 'Under 7', D: 30 }); const l = live([a]);
   const c1 = buildDailyCard(l, '2026-09-08', NOW); assert.equal(c1.picks.length, 1); assert.equal(c1.added, 1);
   const later = new Date('2026-09-08T17:25:00Z');
-  l.cards[0].picks.push(pk({ srcKey: 'b', pick: 'Dog ML +140', type: 'Moneyline', D: 44 }));
+  l.cards[0].picks.push(pk({ srcKey: 'b', pick: 'Dog ML +140', type: 'Moneyline', D: 44 }), pk({ srcKey: 'c', pick: 'Under 5', D: 26, sharpMove: 'x' }));
   const c2 = buildDailyCard(l, '2026-09-08', later);
-  assert.deepEqual(c2.picks.map(p => p.rank + ' ' + p.pick), ['1 Under 7', '2 Dog ML +140']); assert.equal(c2.added, 1); assert.equal(c2.updatedAt, later.toISOString());
+  assert.deepEqual(c2.picks.map(p => p.rank + ' ' + p.pick), ['1 Under 7', '2 Under 5', '3 Dog ML +140']); assert.equal(c2.added, 2); assert.equal(c2.updatedAt, later.toISOString()); // Under 5 has 4 reads, the dog 3
   assert.equal(a.dailyCard.rank, 1); assert.equal(a.dailyCard.builtAt, NOW.toISOString());
   assert.equal(buildDailyCard(l, '2026-09-08', later), null);
 });
@@ -75,11 +76,11 @@ test('a pick shown before the card era keeps its stamp; a later build never re-s
 });
 
 test('push text and one-time push marking through the alerts feed', () => {
-  const l = live([pk({ D: 30 }), pk({ srcKey: 'z', pick: 'Dog ML +120', type: 'Moneyline', D: 27, H: 44, T: 71 })]);
+  const l = live([pk({ D: 40 }), pk({ srcKey: 'z', pick: 'Dog ML +120', type: 'Moneyline', D: 27, H: 44, T: 71, liveCheck: { ok: true, tier: 'play', T: 71, H: 44 } })]);
   const card = buildDailyCard(l, '2026-09-08', NOW);
   const txt = cardText(card);
-  assert.match(txt, /^🃏 Card for Tue, Sep 8 — 2 plays \(top 4 by gap, 2 qualifiers so far, updated 5:25 PM PT\)/);
-  assert.match(txt, /\n1\. Under 8 — A @ B \(MLB, 5:10 PM PT\) · crowd 70% \/ money 40% · gap 30\n2\. Dog ML \+120/);
+  assert.match(txt, /^🃏 Card for Tue, Sep 8 — 2 plays \(top 3: play tier \+ at least 2 public reads agreeing, ranked by reads then gap, updated 5:25 PM PT\)/);
+  assert.match(txt, /\n1\. Under 8 — A @ B \(MLB, 5:10 PM PT\) · crowd 70% \/ money 40% · gap 40 · 3 reads agree: ticket, action, money65\n2\. Dog ML \+120 — A @ B \(MLB, 5:10 PM PT\) · crowd 71% \/ money 44% · gap 27 · 2 reads agree: ticket, action/);
   assert.equal(pendingCard(l).day, '2026-09-08');
   assert.equal(markCardPushed(l, card, NOW), 1); assert.equal(pendingCard(l), null);
   card.updatedAt = '2026-09-08T01:00:00Z'; assert.equal(pendingCard(l).day, '2026-09-08'); // gained plays after the push → pending again
