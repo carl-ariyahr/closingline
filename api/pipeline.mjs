@@ -19,6 +19,7 @@ import { upsertSharpPicks, stampSharpMoves } from '../lib/sharp.mjs';
 import { authorized } from '../lib/auth.mjs';
 import { clvFor, clvSummary } from '../lib/clv.mjs';
 import { shouldBuild, buildDailyCard, cardDayPT } from '../lib/dailycard.mjs';
+import { fetchGameMarkets, groupEvents, matchEvent, kalshiRead } from '../lib/kalshi.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
@@ -477,6 +478,22 @@ export default async function handler(req, res) {
               const info = b.forGame(lp.away, lp.home, lp.date);
               const note = sharpNoteFor({ type: lp.type, side: lp.side }, info) || null;
               if (note !== (lp.sharpNote || null)) { lp.sharpNote = note; lp.sharpAt = ts; report.sharpRefresh.stamped++; changed = true; }
+            }
+          }
+          // Kalshi order-flow box (Carl 2026-09-08): team picks only; one public fetch per sport per run
+          report.kalshi = { sports: {}, matched: 0, unmatched: 0, stamped: 0 };
+          const kEvents = {};
+          for (const c of live.cards) {
+            if (!/^code-/.test(String(c.id)) || !Array.isArray(c.picks)) continue;
+            for (const lp of c.picks) {
+              if (lp.src !== 'code' || lp.date !== day || !lp.liveCheck?.ok || lp.liveCheck.tier !== 'play' || (lp.result && lp.result !== 'pending') || !['away', 'home'].includes(lp.side)) continue;
+              if (!(lp.sport in kEvents)) { try { kEvents[lp.sport] = groupEvents(await fetchGameMarkets(lp.sport)); report.kalshi.sports[lp.sport] = kEvents[lp.sport].length + ' events'; } catch (e) { kEvents[lp.sport] = null; report.kalshi.sports[lp.sport] = `error: ${e.message || e}`; } }
+              const evs = kEvents[lp.sport]; if (!evs) continue;
+              const ev = matchEvent(evs, { away: lp.away, home: lp.home, date: lp.date, start: lp.start });
+              if (!ev) { report.kalshi.unmatched++; continue; }
+              const read = kalshiRead(ev, lp, startedAt); if (!read) { report.kalshi.unmatched++; continue; }
+              report.kalshi.matched++;
+              if (JSON.stringify({ ...(lp.kalshi || {}), at: 0 }) !== JSON.stringify({ ...read, at: 0 })) { lp.kalshi = read; report.kalshi.stamped++; changed = true; }
             }
           }
         }

@@ -25,7 +25,7 @@ console.log('  by day\n' + cut(counted, p => p._date));
 console.log('  by kickoff state\n' + cut(led, p => p.noBet ? 'DO NOT BET' : p.liveCheck ? (p.liveCheck.ok ? 'still a fade' : p.liveCheck.why) : 'unchecked'));
 { const c = clvSummary(counted); console.log(`  closing line value: ${c.n} measured → beat ${c.beat} (${c.byOutcome.beat.w}-${c.byOutcome.beat.l}), worse ${c.worse} (${c.byOutcome.worse.w}-${c.byOutcome.worse.l}), same ${c.same} (${c.byOutcome.same.w}-${c.byOutcome.same.l})${c.avgPts != null ? `, avg ${c.avgPts > 0 ? '+' : ''}${c.avgPts} pts` : ''}${c.avgCents != null ? `, avg ${c.avgCents > 0 ? '+' : ''}${c.avgCents}¢ (ML)` : ''}`); }
 console.log('  by daily-card rank (since the 2026-09-07 rebuild)\n' + cut(counted, p => p.dailyCard && !p.dailyCard.replaced ? `rank ${p.dailyCard.rank}` : null));
-console.log('  by public reads agreeing (lib/boxes.mjs, every counted play)\n' + cut(counted, p => `${boxesFor(p).n} of 5`));
+console.log('  by public reads agreeing (lib/boxes.mjs, every counted play)\n' + cut(counted, p => `${boxesFor(p).n} reads`));
 console.log('  by single read\n' + cut(counted.flatMap(p => boxesFor(p).got.map(b => ({ ...p, _b: b }))), p => p._b));
 console.log('  by market\n' + cut(counted, mkOf));
 console.log('  by sport\n' + cut(counted, sportOf));
