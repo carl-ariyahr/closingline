@@ -478,6 +478,9 @@ export default async function handler(req, res) {
               const info = b.forGame(lp.away, lp.home, lp.date);
               const note = sharpNoteFor({ type: lp.type, side: lp.side }, info) || null;
               if (note !== (lp.sharpNote || null)) { lp.sharpNote = note; lp.sharpAt = ts; report.sharpRefresh.stamped++; changed = true; }
+              // the code card mirrors sharpNote from the shadow pick every run: keep the shadow pick current too, or the next run undoes this
+              const sp = allPicks.find(x => x.gamecode === lp.gamecode && x.type === lp.type && !x.result);
+              if (sp && (sp.sharpNote || null) !== note) { sp.sharpNote = note; sp.sharpAt = ts; }
             }
           }
           // Kalshi order-flow box (Carl 2026-09-08): team picks only; one public fetch per sport per run
