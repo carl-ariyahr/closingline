@@ -2,5 +2,13 @@
   "headers": [
     { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-store" }] },
     { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-store" }] }
-  ]
+  ],
+  "crons": [
+    { "path": "/api/pipeline", "schedule": "25 0-3,11-23 * * *" },
+    { "path": "/api/audit", "schedule": "45 5 * * *" }
+  ],
+  "functions": {
+    "api/pipeline.mjs": { "maxDuration": 300 },
+    "api/audit.mjs": { "maxDuration": 300 }
+  }
 }

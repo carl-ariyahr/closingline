@@ -16,6 +16,7 @@ import { continuityDecide } from '../lib/continuity.mjs';
 import { syncCodeCard } from '../lib/codecard.mjs';
 import { recordLines, pruneHistory, upsertYoYoPicks, crossReference } from '../lib/yoyo.mjs';
 import { upsertSharpPicks, stampSharpMoves } from '../lib/sharp.mjs';
+import { authorized } from '../lib/auth.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
@@ -101,8 +102,7 @@ function ptDateStr(d = new Date()) {
 }
 
 export default async function handler(req, res) {
-  const key = req.headers['x-app-key'] || req.query.k;
-  if (!process.env.APP_KEY || key !== process.env.APP_KEY) return res.status(401).json({ error: 'missing or bad key' });
+  if (!authorized(req)) return res.status(401).json({ error: 'missing or bad key' }); // APP_KEY, or Vercel Cron's bearer
 
   const startedAt = new Date();
   const ts = startedAt.toISOString();
