@@ -18,6 +18,7 @@ import { recordLines, pruneHistory, upsertYoYoPicks, crossReference } from '../l
 import { upsertSharpPicks, stampSharpMoves } from '../lib/sharp.mjs';
 import { authorized } from '../lib/auth.mjs';
 import { clvFor, clvSummary } from '../lib/clv.mjs';
+import { shouldBuild, buildDailyCard, nextDayPT } from '../lib/dailycard.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
@@ -460,15 +461,27 @@ export default async function handler(req, res) {
           if (applyLiveCheck(lp, chk, startedAt)) changed = true;
         }
       }
+      // ---- THE DAILY CARD (Carl 2026-09-07): tomorrow's card, built once at/after 5pm PT, top 4 by gap, locked ----
+      {
+        const day = nextDayPT(startedAt);
+        report.dailyCard = { day, built: false };
+        if (shouldBuild(live, day, hourPT)) {
+          const card = buildDailyCard(live, day, startedAt);
+          if (card) { report.dailyCard = { day, built: true, picks: card.picks.map(p => `${p.rank}. ${p.pick} (gap ${p.D})`), candidates: card.candidates }; changed = true; }
+          else report.dailyCard.note = 'no play-tier candidate yet — will retry next run';
+        } else if (live.dailyCards?.[day]) report.dailyCard = { day, built: true, lockedAt: live.dailyCards[day].builtAt, picks: live.dailyCards[day].picks.map(p => `${p.rank}. ${p.pick}`) };
+      }
       // ---- PLAYS LEDGER stamp (Carl 2026-09-02: "if you show it to me, it needs to be counted") ----
       // Same rule the front page uses for Today's Plays. Once stamped, a pick is counted in the plays
       // record no matter what happens later (faded, retired, whatever). Clean start 2026-09-02.
+      // Carl 2026-09-07: code picks are shown ONLY through the daily card (stamped there); this loop covers the legacy cards.
       const FRONT_SKIP = new Set(['patrick-variables', 'rnd-fade', 'ufc-card', 'auto-alerts', 'wcoast-angle', 'sharp-moves']);
       report.playsStamped = 0;
       for (const c of live.cards) {
         if (FRONT_SKIP.has(c.id) || !Array.isArray(c.picks)) continue;
         for (const lp of c.picks) {
           if (lp.playsShownAt) continue;
+          if (lp.src === 'code') continue; // daily card only
           if (!(lp.status === 'play' || lp.stack)) continue;
           if (lp.status === 'dead' || lp.status === 'logged' || lp.status === 'alert') continue;
           if (lp.result && lp.result !== 'pending') continue;
