@@ -27,10 +27,12 @@ test('cardContext carries each play with its line path; pending day found until 
 test('journalContext: today record, ledger, by-rank, CLV, previous entry', () => {
   const live = mk(); live.cards[0].picks[0].result = 'win'; live.cards[0].picks[0].clv = { beat: 'beat', diff: 0.5, unit: 'pts' }; live.cards[0].picks[1].result = 'loss'; live.cards[0].picks[1].noBet = true;
   const j = { entries: [{ date: '2026-09-07', read: 'yesterday', recommendations: ['a'] }] };
+  live.cards[0].picks.push(lp({ srcKey: 'g9|Total', gamecode: 'g9', pick: 'Under 9', result: 'win', dailyCard: { day: '2026-09-08', rank: 1, builtAt: 't', replaced: 'x' } })); // retired from the card: not a card play
   const c = journalContext(live, j, '2026-09-08');
-  assert.deepEqual(c.todayRecord, { w: 1, l: 0, p: 0, units: 0.91 }); assert.equal(c.notCounted, 1);
-  assert.deepEqual(c.ledgerRecord, { w: 1, l: 0, p: 0, units: 0.91 }); assert.deepEqual(c.byRank, { 1: { w: 1, l: 0, p: 0, units: 0.91 } });
-  assert.equal(c.clv.beat, 1); assert.equal(c.previousEntry.read, 'yesterday'); assert.equal(c.plays.length, 2);
+  assert.deepEqual(c.todayRecord, { w: 1, l: 0, p: 0, units: 0.91 }); assert.equal(c.notCounted, 1); assert.equal(c.plays.length, 2);
+  assert.deepEqual(c.cardEraRecord, { w: 1, l: 0, p: 0, units: 0.91 });
+  assert.deepEqual(c.ledgerRecord, { w: 2, l: 0, p: 0, units: 1.82 }); assert.deepEqual(c.byRank, { 1: { w: 1, l: 0, p: 0, units: 0.91 } }); // ledger counts the retired play, the card does not
+  assert.equal(c.clv.beat, 1); assert.equal(c.previousEntry.read, 'yesterday');
 });
 
 test('upsertJournal replaces the same date, sanitizes, keeps order and rev', () => {
