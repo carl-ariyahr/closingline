@@ -96,6 +96,7 @@
   .pickrow:last-child{border-bottom:none}
   .kbadge{font-family:var(--disp);font-weight:700;font-size:11px;letter-spacing:.12em;text-transform:uppercase;border-radius:4px;padding:3px 8px;flex:none}
   .kbadge.fade{background:var(--amber-dim);color:var(--amber)}
+  .kbadge.consensus{background:rgba(46,196,182,.18);color:#2ec4b6;border:1px solid rgba(46,196,182,.6)}
   .kbadge.sharp{background:rgba(85,181,134,.14);color:var(--win)}
   .kbadge.rlm{background:rgba(224,96,92,.14);color:var(--loss)}
   .kbadge.wcoast{background:rgba(127,168,217,.15);color:#7FA8D9}
@@ -719,6 +720,7 @@ document.addEventListener('toggle',function(ev){ var d=ev.target;
 /* Tracked cohorts (Carl 2026-09-05): crowd70 = crowd held 70%+ of tickets on the side we fade; dogml = moneyline on the dog.
    Graded picks carry p.cohorts from the pipeline; live ones are computed here the same way. */
 function cohortsOf(p){
+  if(p.kind==='consensus')return []; /* follow-the-money plays: the fade cohorts do not apply */
   if(Array.isArray(p.cohorts))return p.cohorts;
   var out=[]; var T=(p.liveCheck&&p.liveCheck.T!=null)?p.liveCheck.T:p.T, H=(p.liveCheck&&p.liveCheck.H!=null)?p.liveCheck.H:p.H;
   if(T==null||H==null){var m=String(p.signal||'').match(/(\d{1,3})%\s+(?:of\s+)?tickets[^·]*?(\d{1,3})%\s+(?:of\s+the\s+)?money/i); if(m){if(T==null)T=Number(m[1]);if(H==null)H=Number(m[2]);}}
@@ -1027,8 +1029,8 @@ function render(){
   }
   allCards.forEach(function(cd){cd.picks.forEach(function(p){p._sport=sportOf(p,cd);p._cardId=cd.id})});
   function pickRow(p){
-    var kb=['fade','rlm','wcoast','roaddog','homedog','injury','steam','latepub','ufc','ps','yoyo','sharp'].indexOf(p.kind)>=0?p.kind:'sharp';
-    var kl={fade:'Fade',rlm:'Line move',wcoast:'West Coast',roaddog:'Road dog 1H',homedog:'Home dog 1H',injury:'\u26a0 Injury',steam:'Early steam',latepub:'Late/public',ufc:'UFC',ps:(p.psWho==='computer'?'PS\u00b7C':'PS'),yoyo:'Yo-Yo',sharp:'Sharp move'}[p.kind]||'Sharp $';
+    var kb=['fade','rlm','wcoast','roaddog','homedog','injury','steam','latepub','ufc','ps','yoyo','sharp','consensus'].indexOf(p.kind)>=0?p.kind:'sharp';
+    var kl={consensus:'\ud83d\udd01 Consensus',fade:'Fade',rlm:'Line move',wcoast:'West Coast',roaddog:'Road dog 1H',homedog:'Home dog 1H',injury:'\u26a0 Injury',steam:'Early steam',latepub:'Late/public',ufc:'UFC',ps:(p.psWho==='computer'?'PS\u00b7C':'PS'),yoyo:'Yo-Yo',sharp:'Sharp move'}[p.kind]||'Sharp $';
     /* Patrick's Variables cross-reference (Carl 2026-09-04): PS = on Phil Steele's Pressbox sheet (orange; PS·C = his computer), Yo-Yo = the line went out and came back (purple) */
     var xref=(p.psFlag?'<span class="kbadge ps" title="This game is a Phil Steele Pressbox '+(p.psFlag==='computer'?'Computer':'Phil')+' Best Bet this week">'+(p.psFlag==='computer'?'PS\u00b7C':'PS')+'</span>':'')
       +(p.yoyoFlag?'<span class="kbadge yoyo" title="Yo-yo line: '+esc(p.yoyoFlag)+'">Yo-Yo</span>':'');
@@ -1054,7 +1056,7 @@ function render(){
     if(L&&(!p.result||p.result==='pending')){
       var when=L.ts?new Date(L.ts).toLocaleTimeString('en-US',{timeZone:'America/Los_Angeles',hour:'numeric',minute:'2-digit'}).toLowerCase().replace(' ',''):'';
       var nums=(L.T!=null&&L.H!=null)?' · crowd '+esc(String(L.T))+'% tix / '+esc(String(L.H))+'% $'+(L.D!=null?' · gap '+esc(String(L.D)):''):'';
-      lc=L.ok?'<span class="cchip lcok" title="Code re-read the live board: the crowd is still on the other side and the setup still clears the bar (60% tickets, 8-point gap, money 55%+ on our side)">✓ STILL A FADE '+(L.n||1)+'×'+nums+' · '+esc(when)+'</span>'
+      lc=L.ok?(p.kind==='consensus'?'<span class="cchip lcok" title="Follow the money: the crowd still holds 60%+ of tickets AND 60%+ of the money on our side">✓ CONSENSUS HOLDS '+(L.n||1)+'×'+nums+' · '+esc(when)+'</span>':'<span class="cchip lcok" title="Code re-read the live board: the crowd is still on the other side and the setup still clears the bar (60% tickets, 8-point gap, money 55%+ on our side)">✓ STILL A FADE '+(L.n||1)+'×'+nums+' · '+esc(when)+'</span>')
         :L.why==='flipped'?'<span class="nobet" title="The crowd has flipped to OUR side ('+esc(when)+' read) — this is no longer a fade. Not a bet. The emblem comes off if the signal returns before kickoff.">⛔ DO NOT BET</span>'
         :L.why==='faded'?'<span class="nobet" title="The crowd is still on the other side, but on the latest read the setup no longer clears the bar (crowd under 60% of tickets, money gap under 8, money under 55% on our side, an Over fade or a moneyline favorite). Not a bet unless the signal comes back before kickoff (Carl 2026-09-07).">⛔ DO NOT BET · weakened'+nums+' · '+esc(when)+'</span>':'';
     }
@@ -1118,7 +1120,7 @@ function render(){
   /* 1 — today's plays (soonest kickoff first, only games within 2 days) */
   function isFeatured(p){return p.featured||p.status==='play'||p.stack}
   if(cardSub==='plays'){
-  h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Carl’s plays <small>'+(picksData&&picksData.dailyCardSince?'the daily card · today\u2019s games · fills from the 7am PT read until 12:25pm · at most 3 · play tier plus at least 2 independent public reads agreeing (sharp price, line move, ticket size, Action Network, money 65%, Kalshi flow) · ranked by reads, then gap · locked when added · zero plays is a valid day · fades before kickoff = DO NOT BET':'highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)'+(picksData&&picksData.playsSource==='code'?' · picked by code since Sep 4':''))+'</small></h2>'
+  h+='<section class="panel" style="border-color:var(--amber)"><h2 style="color:var(--amber)">Carl’s plays <small>'+(picksData&&picksData.dailyCardSince?'the daily card · today\u2019s games · fills from the 7am PT read until 12:25pm · at most 3 fades · play tier plus at least 2 independent public reads agreeing (sharp price, line move, ticket size, Action Network, money 65%, Kalshi flow) · ranked by reads, then gap · locked when added · plus up to 2 \ud83d\udd01 CONSENSUS plays (a tracked fade whose money joined the crowd: we take the crowd side) · zero plays is a valid day · fades before kickoff = DO NOT BET':'highest conviction · soonest first · qualified plays up to 7 days out (Unders surface immediately)'+(picksData&&picksData.playsSource==='code'?' · picked by code since Sep 4':''))+'</small></h2>'
     +'<p class="legend" style="margin:0 0 6px"><span style="color:#2ec4b6">▌ teal edge</span> = crowd held 70%+ of tickets on the side we fade &nbsp;·&nbsp; <span style="color:#e05297">▌ pink edge</span> = the money is under 55% on our side (the crowd still holds most of it) &nbsp;·&nbsp; <span style="color:#e0b400">▌ gold edge</span> = moneyline on the dog &nbsp;·&nbsp; <span style="color:#a56cff">▌ purple edge</span> = the book moved the line toward our side against the ticket majority (sharp money with us) &nbsp;·&nbsp; several edges = several. Each cohort has its own view under the Cohorts pill and a row on the Record tab.</p>';
   /* Carl 2026-09-04: make the state obvious — clean fades first, then weakened, then DO NOT BET; soonest kickoff first inside each group */
   var GROUPS=[[0,''],[1,'<h3 class="subhead warn">Signal weakened on the latest read — crowd still on the other side, but below the 60 / 8 bar</h3>'],[2,'<h3 class="subhead bad">DO NOT BET — the signal is gone on the latest read: crowd flipped to our side, or below the bar (60% tickets / 8 gap / money 55%+ on our side)</h3>']];
@@ -1126,7 +1128,7 @@ function render(){
      (crowd 70%+, pros moved the line our way, money 55%+ on our side, dog price for moneylines), then by gap. Top 5. */
   (function(){
     var tISO=ptISO();
-    var cands=topPicks.filter(function(p){return gameISO(p)===tISO&&playState(p)===0});
+    var cands=topPicks.filter(function(p){return gameISO(p)===tISO&&playState(p)===0&&p.kind!=='consensus'});
     function boxes(p){ var co=cohortsOf(p); var ml=/money/i.test(p.type||'')||/\bML\b/.test(String(p.pick||'')); var L=p.liveCheck||{}; var T=(L.T!=null?L.T:p.T), H=(L.H!=null?L.H:p.H), D=(L.D!=null?L.D:p.D);
       var got=[],miss=[];
       (co.indexOf('crowd70')>=0?got:miss).push('crowd '+(T!=null?T+'%':'70%+'));

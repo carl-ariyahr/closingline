@@ -20,6 +20,7 @@ import { authorized } from '../lib/auth.mjs';
 import { clvFor, clvSummary } from '../lib/clv.mjs';
 import { shouldBuild, buildDailyCard, cardDayPT } from '../lib/dailycard.mjs';
 import { fetchGameMarkets, groupEvents, matchEvent, kalshiRead } from '../lib/kalshi.mjs';
+import { consensusCandidates, addConsensusPlays, consensusCheck, applyConsensusCheck } from '../lib/consensus.mjs';
 
 const LIVE_PICKS_BLOB = 'closing-line-picks.json'; // Carl's live card — the pipeline touches ONLY confirmation tags on it (step 2b)
 const SNAP_BLOB = 'closing-line-shadow-lines.json';
@@ -507,6 +508,26 @@ export default async function handler(req, res) {
           if (card) { report.dailyCard = { day, picks: card.picks.map(p => `${p.rank}. ${p.pick} (gap ${p.D})`), added: card.added, candidates: card.candidates }; changed = true; }
           else report.dailyCard.note = cur?.picks?.length ? 'no new clean play-tier candidate this run' : 'no play-tier candidate yet — will retry next run until 12:25pm PT';
         } else report.dailyCard.note = hourPT < 7 ? 'before the 7am PT build window' : hourPT >= 13 ? 'build window closed for today' : 'card is full';
+      }
+      // ---- CONSENSUS plays (Carl 2026-09-11): a tracked fade whose money joined the crowd → the crowd side is a play, badged ----
+      {
+        const day = cardDayPT(startedAt);
+        report.consensus = { candidates: 0, added: [], checked: 0 };
+        if (hourPT >= 7) {
+          const cands = consensusCandidates(allPicks, freshByCode, day, startedAt);
+          report.consensus.candidates = cands.length;
+          const added = addConsensusPlays(live, cands, day, startedAt);
+          if (added.length) { report.consensus.added = added.map(lp => `${lp.dailyCard.rank}. ${lp.pick} (was ${lp.fromFade}; crowd ${lp.T}/${lp.H})`); changed = true; }
+        }
+        for (const c of live.cards) {
+          if (!/^code-/.test(String(c.id)) || !Array.isArray(c.picks)) continue;
+          for (const lp of c.picks) {
+            if (lp.kind !== 'consensus' || (lp.result && lp.result !== 'pending')) continue;
+            const g = freshByCode[lp.gamecode]; if (!g || g.started) continue;
+            const chk = consensusCheck(lp, g, startedAt); report.consensus.checked++;
+            if (applyConsensusCheck(lp, chk, startedAt)) changed = true;
+          }
+        }
       }
       // ---- PLAYS LEDGER stamp (Carl 2026-09-02: "if you show it to me, it needs to be counted") ----
       // Same rule the front page uses for Today's Plays. Once stamped, a pick is counted in the plays
